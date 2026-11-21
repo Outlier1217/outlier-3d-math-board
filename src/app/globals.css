@@ -305,3 +305,25 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   z-index: 2;
   pointer-events: none;
 }
+
+
+/* Calculus route: allow document scrolling without changing the main board */
+body:has(.calculus-page) {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+
+/* Final scroll fix: Calculus page uses document-level scrolling */
+html:has(.calculus-page) {
+  height: auto !important;
+  min-height: 100% !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+
+body:has(.calculus-page) {
+  height: auto !important;
+  min-height: 100vh !important;
+  overflow: visible !important;
+}

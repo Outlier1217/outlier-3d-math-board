@@ -4,8 +4,11 @@ import { Canvas } from "@react-three/fiber";
 import { Grid, Line, OrbitControls, Text } from "@react-three/drei";
 import { Suspense } from "react";
 import * as THREE from "three";
-import { useSceneStore, type Octant } from "@/store/scene-store";
-
+import {
+  useSceneStore,
+  type Octant,
+  type ScenePoint,
+} from "@/store/scene-store";
 
 function Axis({
   end,
@@ -31,12 +34,10 @@ function Axis({
   return (
     <group>
       <Line points={[[0, 0, 0], end]} color={color} lineWidth={2} />
-
       <mesh position={end} quaternion={quaternion}>
         <coneGeometry args={[0.09, 0.24, 16]} />
         <meshBasicMaterial color={color} />
       </mesh>
-
       <Text
         position={labelPosition}
         fontSize={0.32}
@@ -50,92 +51,92 @@ function Axis({
   );
 }
 
-function PointA() {
-  const pointA = useSceneStore((state) => state.pointA);
-  const point: [number, number, number] = [
-    pointA.x,
-    pointA.y,
-    pointA.z,
-  ];
+function PointMarker({ point }: { point: ScenePoint }) {
+  const selectedPointId = useSceneStore((state) => state.selectedPointId);
+  const selectPoint = useSceneStore((state) => state.selectPoint);
+  const isSelected = selectedPointId === point.id;
+  const { x, y, z } = point.position;
+  const position: [number, number, number] = [x, y, z];
 
-  const projectionXY: [number, number, number] = [
-    pointA.x,
-    pointA.y,
-    0,
-  ];
-
-  const projectionX: [number, number, number] = [
-    pointA.x,
-    0,
-    0,
-  ];
-
-  const projectionY: [number, number, number] = [
-    0,
-    pointA.y,
-    0,
-  ];
+  if (!point.visible) return null;
 
   return (
     <group>
-      <mesh position={point}>
-        <sphereGeometry args={[0.09, 24, 24]} />
+      <mesh
+        position={position}
+        onClick={(event) => {
+          event.stopPropagation();
+          selectPoint(point.id);
+        }}
+      >
+        <sphereGeometry args={[isSelected ? 0.12 : 0.09, 24, 24]} />
         <meshStandardMaterial
-          color="#facc15"
-          emissive="#8a5b00"
-          emissiveIntensity={0.5}
+          color={point.color}
+          emissive={point.color}
+          emissiveIntensity={isSelected ? 0.35 : 0.12}
         />
       </mesh>
 
       <Text
-        position={[pointA.x + 0.25, pointA.y + 0.15, pointA.z + 0.25]}
-        fontSize={0.28}
-        color="#facc15"
+        position={[x + 0.22, y + 0.15, z + 0.22]}
+        fontSize={0.27}
+        color={point.color}
         anchorX="left"
         anchorY="middle"
         outlineWidth={0.015}
         outlineColor="#111827"
       >
-        {`A (${pointA.x}, ${pointA.y}, ${pointA.z})`}
+        {`${point.name.replace("Point ", "")} (${x}, ${y}, ${z})`}
       </Text>
 
-      {/* Position vector OA */}
       <Line
-        points={[[0, 0, 0], point]}
-        color="#facc15"
-        lineWidth={2.5}
+        points={[[0, 0, 0], position]}
+        color={point.color}
+        lineWidth={isSelected ? 2.8 : 1.6}
+        transparent
+        opacity={isSelected ? 1 : 0.72}
       />
 
-      {/* Projection lines */}
-      <Line
-        points={[
-          point,
-          projectionXY,
-          projectionX,
-          [0, 0, 0],
-        ]}
-        color="#60a5fa"
-        lineWidth={1}
-        dashed
-        dashSize={0.12}
-        gapSize={0.08}
-        transparent
-        opacity={0.65}
-      />
+      {/* Label the selected position vector from the origin */}
+      {isSelected && (
+        <Text
+          position={[x / 2 + 0.12, y / 2 + 0.12, z / 2 + 0.12]}
+          fontSize={0.22}
+          color={point.color}
+          anchorX="left"
+          anchorY="middle"
+          outlineWidth={0.02}
+          outlineColor="#0F172A"
+        >
+          {`r⃗ ${point.name.replace("Point ", "")}`}
+        </Text>
+      )}
 
-      <Line
-        points={[
-          projectionXY,
-          projectionY,
-        ]}
-        color="#60a5fa"
-        lineWidth={1}
-        dashed
-        dashSize={0.12}
-        gapSize={0.08}
-        transparent
-        opacity={0.65}
-      />
+      {/* Coordinate projections for the selected point */}
+      {isSelected && (
+        <>
+          <Line
+            points={[position, [x, y, 0], [x, 0, 0], [0, 0, 0]]}
+            color="#60a5fa"
+            lineWidth={1}
+            dashed
+            dashSize={0.12}
+            gapSize={0.08}
+            transparent
+            opacity={0.65}
+          />
+          <Line
+            points={[[x, y, 0], [0, y, 0]]}
+            color="#60a5fa"
+            lineWidth={1}
+            dashed
+            dashSize={0.12}
+            gapSize={0.08}
+            transparent
+            opacity={0.65}
+          />
+        </>
+      )}
     </group>
   );
 }
@@ -175,10 +176,326 @@ function OctantHighlight({ octant }: { octant: Octant }) {
   );
 }
 
-function Scene() {
-  const selectedOctant = useSceneStore(
-    (state) => state.selectedOctant
+function DistanceSegment({ points, pointIds }: { points: ScenePoint[]; pointIds: [string, string] | null }) {
+  if (!pointIds) return null;
+  const pointA = points.find((point) => point.id === pointIds[0]);
+  const pointB = points.find((point) => point.id === pointIds[1]);
+  if (!pointA?.visible || !pointB?.visible) return null;
+  const start: [number,number,number] = [pointA.position.x,pointA.position.y,pointA.position.z];
+  const end: [number,number,number] = [pointB.position.x,pointB.position.y,pointB.position.z];
+  const midpoint: [number,number,number] = [(start[0]+end[0])/2,(start[1]+end[1])/2,(start[2]+end[2])/2];
+  const distance = Math.sqrt((end[0]-start[0])**2+(end[1]-start[1])**2+(end[2]-start[2])**2);
+  return <group><Line points={[start,end]} color="#F8FAFC" lineWidth={3}/><Text position={[midpoint[0],midpoint[1],midpoint[2]+0.22]} fontSize={0.24} color="#F8FAFC" anchorX="center" anchorY="middle" outlineWidth={0.025} outlineColor="#0F172A">{`d = ${Number(distance.toFixed(3))}`}</Text></group>;
+}
+
+function VectorOperationGraphic({ points, pointIds, operation }: { points: ScenePoint[]; pointIds: [string, string] | null; operation: "add" | "subtract" }) {
+  if (!pointIds) return null;
+  const pa = points.find((point) => point.id === pointIds[0]);
+  const pb = points.find((point) => point.id === pointIds[1]);
+  if (!pa?.visible || !pb?.visible) return null;
+  const a: [number, number, number] = [pa.position.x, pa.position.y, pa.position.z];
+  const b: [number, number, number] = [pb.position.x, pb.position.y, pb.position.z];
+  const result: [number, number, number] = operation === "add"
+    ? [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+    : [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const translatedB: [number, number, number] = operation === "add"
+    ? [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+    : [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  return <group>
+    <Line points={[[0, 0, 0], a]} color="#22C55E" lineWidth={2.5} />
+    <Line points={[[0, 0, 0], b]} color="#38BDF8" lineWidth={2.5} />
+    {operation === "add" ? <>
+      <Line points={[a, result]} color="#38BDF8" lineWidth={2} dashed />
+      <Line points={[b, result]} color="#22C55E" lineWidth={2} dashed />
+    </> : <Line points={[a, translatedB]} color="#A78BFA" lineWidth={2.5} />}
+    <Line points={[[0, 0, 0], result]} color="#FACC15" lineWidth={3.5} />
+    <Text position={[result[0] + 0.12, result[1] + 0.12, result[2] + 0.12]} fontSize={0.24} color="#FACC15" outlineWidth={0.02} outlineColor="#0F172A">
+      {operation === "add" ? "A + B" : "A − B"}
+    </Text>
+  </group>;
+}
+
+function AngleBetweenVectorsGraphic({ points, pointIds }: { points: ScenePoint[]; pointIds: [string, string] | null }) {
+  if (!pointIds) return null;
+  const pa = points.find((point) => point.id === pointIds[0]);
+  const pb = points.find((point) => point.id === pointIds[1]);
+  if (!pa?.visible || !pb?.visible) return null;
+
+  const a: [number, number, number] = [pa.position.x, pa.position.y, pa.position.z];
+  const b: [number, number, number] = [pb.position.x, pb.position.y, pb.position.z];
+  const lenA = Math.hypot(...a);
+  const lenB = Math.hypot(...b);
+  if (lenA < 1e-8 || lenB < 1e-8) return null;
+
+  const u: [number, number, number] = [a[0] / lenA, a[1] / lenA, a[2] / lenA];
+  const w: [number, number, number] = [b[0] / lenB, b[1] / lenB, b[2] / lenB];
+  const dot = Math.max(-1, Math.min(1, u[0] * w[0] + u[1] * w[1] + u[2] * w[2]));
+  const angle = Math.acos(dot);
+  if (angle < 1e-4) return null;
+
+  let normal: [number, number, number] = [
+    u[1] * w[2] - u[2] * w[1],
+    u[2] * w[0] - u[0] * w[2],
+    u[0] * w[1] - u[1] * w[0],
+  ];
+  let normalLength = Math.hypot(...normal);
+  if (normalLength < 1e-7) {
+    const reference: [number, number, number] = Math.abs(u[2]) < 0.9 ? [0, 0, 1] : [0, 1, 0];
+    normal = [
+      u[1] * reference[2] - u[2] * reference[1],
+      u[2] * reference[0] - u[0] * reference[2],
+      u[0] * reference[1] - u[1] * reference[0],
+    ];
+    normalLength = Math.hypot(...normal);
+  }
+  normal = [normal[0] / normalLength, normal[1] / normalLength, normal[2] / normalLength];
+  const tangent: [number, number, number] = [
+    normal[1] * u[2] - normal[2] * u[1],
+    normal[2] * u[0] - normal[0] * u[2],
+    normal[0] * u[1] - normal[1] * u[0],
+  ];
+
+  const radius = Math.max(0.45, Math.min(1.25, Math.min(lenA, lenB) * 0.35));
+  const arcPoints: [number, number, number][] = [];
+  const segments = 40;
+  for (let i = 0; i <= segments; i += 1) {
+    const t = (angle * i) / segments;
+    arcPoints.push([
+      radius * (u[0] * Math.cos(t) + tangent[0] * Math.sin(t)),
+      radius * (u[1] * Math.cos(t) + tangent[1] * Math.sin(t)),
+      radius * (u[2] * Math.cos(t) + tangent[2] * Math.sin(t)),
+    ]);
+  }
+
+  const mid = angle / 2;
+  const labelPosition: [number, number, number] = [
+    (radius + 0.22) * (u[0] * Math.cos(mid) + tangent[0] * Math.sin(mid)),
+    (radius + 0.22) * (u[1] * Math.cos(mid) + tangent[1] * Math.sin(mid)),
+    (radius + 0.22) * (u[2] * Math.cos(mid) + tangent[2] * Math.sin(mid)),
+  ];
+  const degrees = (angle * 180) / Math.PI;
+
+  return (
+    <group>
+      <Line points={arcPoints} color="#F0ABFC" lineWidth={3} />
+      <Text position={labelPosition} fontSize={0.25} color="#F0ABFC" anchorX="center" anchorY="middle" outlineWidth={0.025} outlineColor="#0F172A">
+        {`${degrees.toFixed(1)}°`}
+      </Text>
+    </group>
   );
+}
+
+function CrossProductGraphic({ points, pointIds }: { points: ScenePoint[]; pointIds: [string, string] | null }) {
+  if (!pointIds) return null;
+  const pa = points.find((point) => point.id === pointIds[0]);
+  const pb = points.find((point) => point.id === pointIds[1]);
+  if (!pa?.visible || !pb?.visible) return null;
+
+  const a: [number, number, number] = [pa.position.x, pa.position.y, pa.position.z];
+  const b: [number, number, number] = [pb.position.x, pb.position.y, pb.position.z];
+  const result: [number, number, number] = [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ];
+  const magnitude = Math.hypot(...result);
+  if (magnitude < 1e-8) return null;
+
+  const sum: [number, number, number] = [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  const labelPosition: [number, number, number] = [
+    result[0] * 1.04 + 0.12,
+    result[1] * 1.04 + 0.12,
+    result[2] * 1.04 + 0.12,
+  ];
+
+  return (
+    <group>
+      <Line points={[[0, 0, 0], a, sum, b, [0, 0, 0]]} color="#38BDF8" lineWidth={1.8} dashed />
+      <Line points={[[0, 0, 0], result]} color="#F472B6" lineWidth={4} />
+      <Text position={labelPosition} fontSize={0.25} color="#F9A8D4" anchorX="left" anchorY="middle" outlineWidth={0.025} outlineColor="#0F172A">
+        {`A × B (${result.map((v) => Number(v.toFixed(2))).join(", ")})`}
+      </Text>
+    </group>
+  );
+}
+
+function ProjectionGraphic({ points, pointIds }: { points: ScenePoint[]; pointIds: [string, string] | null }) {
+  if (!pointIds) return null;
+  const pa = points.find((point) => point.id === pointIds[0]);
+  const pb = points.find((point) => point.id === pointIds[1]);
+  if (!pa?.visible || !pb?.visible) return null;
+
+  const a: [number, number, number] = [pa.position.x, pa.position.y, pa.position.z];
+  const b: [number, number, number] = [pb.position.x, pb.position.y, pb.position.z];
+  const denominator = b[0] ** 2 + b[1] ** 2 + b[2] ** 2;
+  if (denominator < 1e-8) return null;
+
+  const dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const factor = dot / denominator;
+  const projected: [number, number, number] = [
+    factor * b[0],
+    factor * b[1],
+    factor * b[2],
+  ];
+  const labelPosition: [number, number, number] = [
+    projected[0] + 0.14,
+    projected[1] + 0.14,
+    projected[2] + 0.14,
+  ];
+
+  return (
+    <group>
+      <Line points={[[0, 0, 0], projected]} color="#E879F9" lineWidth={4} />
+      <Line points={[a, projected]} color="#F0ABFC" lineWidth={2} dashed />
+      <Text position={labelPosition} fontSize={0.23} color="#F0ABFC" anchorX="left" anchorY="middle" outlineWidth={0.025} outlineColor="#0F172A">
+        {`projB A (${projected.map((v) => Number(v.toFixed(2))).join(", ")})`}
+      </Text>
+    </group>
+  );
+}
+
+function ConicSectionsGraphic({ conic }: { conic: { angle: number; offset: number; visible: boolean } }) {
+  if (!conic.visible) return null;
+  const halfAngle = 35 * Math.PI / 180;
+  const slope = Math.tan(halfAngle);
+  const angle = conic.angle * Math.PI / 180;
+  const normal = new THREE.Vector3(-Math.sin(angle), 0, Math.cos(angle));
+  const planePoint = new THREE.Vector3(0, 0, conic.offset);
+  const planeQuaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+  const planeSize = 14;
+  const planePosition: [number, number, number] = [planePoint.x, planePoint.y, planePoint.z];
+  const curves: [number, number, number][][] = [];
+  const samples = 240;
+  for (const sign of [1, -1]) {
+    const curve: [number, number, number][] = [];
+    for (let i = 0; i <= samples; i++) {
+      const t = (i / samples) * Math.PI * 2;
+      const denominator = normal.z + sign * slope * (normal.x * Math.cos(t) + normal.y * Math.sin(t));
+      if (Math.abs(denominator) < 1e-5) {
+        curve.push([NaN, NaN, NaN]);
+        continue;
+      }
+      const z = -normal.dot(planePoint) / denominator;
+      const radius = Math.abs(z) * slope;
+      const x = radius * Math.cos(t);
+      const y = radius * Math.sin(t);
+      curve.push([x, y, z]);
+    }
+    curves.push(curve);
+  }
+  const planeCorners = [
+    new THREE.Vector3(-planeSize, -planeSize, 0),
+    new THREE.Vector3(planeSize, -planeSize, 0),
+    new THREE.Vector3(planeSize, planeSize, 0),
+    new THREE.Vector3(-planeSize, planeSize, 0),
+  ].map((corner) => corner.applyQuaternion(planeQuaternion).add(planePoint).toArray() as [number, number, number]);
+  const classification = conic.angle < 0.5 ? "Circle" : Math.abs(conic.angle - 55) <= 1 ? "Parabola" : conic.angle < 55 ? "Ellipse" : "Hyperbola";
+  return (
+    <group>
+      <mesh position={[0, 0, 3.5]}>
+        <coneGeometry args={[Math.tan(halfAngle) * 7, 7, 64, 1, true]} />
+        <meshBasicMaterial color="#60A5FA" transparent opacity={0.12} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <mesh position={[0, 0, -3.5]} rotation={[Math.PI, 0, 0]}>
+        <coneGeometry args={[Math.tan(halfAngle) * 7, 7, 64, 1, true]} />
+        <meshBasicMaterial color="#60A5FA" transparent opacity={0.12} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <mesh position={planePosition} quaternion={planeQuaternion}>
+        <planeGeometry args={[planeSize * 2, planeSize * 2]} />
+        <meshBasicMaterial color="#F59E0B" transparent opacity={0.13} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <Line points={[...planeCorners, planeCorners[0]]} color="#FBBF24" lineWidth={1.5} />
+      {curves.map((curve, index) => (
+        <Line key={index} points={curve.filter((point) => point.every(Number.isFinite))} color={index === 0 ? "#F472B6" : "#A78BFA"} lineWidth={3} />
+      ))}
+      <Text position={[0.2, 0.2, 7.8]} fontSize={0.28} color="#FCD34D" outlineWidth={0.025} outlineColor="#0F172A">
+        {classification}
+      </Text>
+    </group>
+  );
+}
+
+function SphereGraphic({ sphere }: { sphere: { center: [number, number, number]; radius: number } | null }) {
+  if (!sphere || sphere.radius <= 0) return null;
+  return (
+    <group position={sphere.center}>
+      <mesh>
+        <sphereGeometry args={[sphere.radius, 48, 32]} />
+        <meshPhysicalMaterial color="#A78BFA" transparent opacity={0.2} roughness={0.35} metalness={0.05} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <mesh>
+        <sphereGeometry args={[sphere.radius, 24, 16]} />
+        <meshBasicMaterial color="#C4B5FD" wireframe transparent opacity={0.48} />
+      </mesh>
+      <mesh>
+        <sphereGeometry args={[0.07, 16, 16]} />
+        <meshBasicMaterial color="#FDE68A" />
+      </mesh>
+      <Text position={[0.12, 0.12, sphere.radius + 0.2]} fontSize={0.23} color="#DDD6FE" outlineWidth={0.025} outlineColor="#0F172A">
+        Sphere
+      </Text>
+    </group>
+  );
+}
+
+function LineGeometryGraphic({ lineGeometry }: { lineGeometry: { point: [number, number, number]; direction: [number, number, number] } | null }) {
+  if (!lineGeometry) return null;
+  const origin = new THREE.Vector3(...lineGeometry.point);
+  const direction = new THREE.Vector3(...lineGeometry.direction);
+  if (direction.length() < 1e-8) return null;
+  direction.normalize();
+  const start = origin.clone().addScaledVector(direction, -8);
+  const end = origin.clone().addScaledVector(direction, 8);
+  const label = origin.clone().addScaledVector(direction, 3.2).add(new THREE.Vector3(0.12, 0.12, 0.18));
+  return (
+    <group>
+      <Line points={[[start.x, start.y, start.z], [end.x, end.y, end.z]]} color="#FBBF24" lineWidth={3} />
+      <mesh position={[origin.x, origin.y, origin.z]}>
+        <sphereGeometry args={[0.075, 16, 16]} />
+        <meshBasicMaterial color="#FBBF24" />
+      </mesh>
+      <Text position={[label.x, label.y, label.z]} fontSize={0.25} color="#FDE68A" outlineWidth={0.025} outlineColor="#0F172A">Line AB</Text>
+    </group>
+  );
+}
+
+function PlaneGraphic({ equation }: { equation: { a: number; b: number; c: number; d: number } | null }) {
+  if (!equation) return null;
+  const { a, b, c, d } = equation;
+  const normal = new THREE.Vector3(a, b, c);
+  const normalLength = normal.length();
+  if (normalLength < 1e-8) return null;
+  normal.normalize();
+
+  const center = new THREE.Vector3(-d * a / (a*a+b*b+c*c), -d * b / (a*a+b*b+c*c), -d * c / (a*a+b*b+c*c));
+  const helper = Math.abs(normal.z) < 0.9 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(0, 1, 0);
+  const u = new THREE.Vector3().crossVectors(normal, helper).normalize();
+  const v = new THREE.Vector3().crossVectors(normal, u).normalize();
+  const size = 7;
+  const corners = [
+    center.clone().addScaledVector(u, -size).addScaledVector(v, -size),
+    center.clone().addScaledVector(u, size).addScaledVector(v, -size),
+    center.clone().addScaledVector(u, size).addScaledVector(v, size),
+    center.clone().addScaledVector(u, -size).addScaledVector(v, size),
+  ];
+  const position: [number, number, number] = [center.x, center.y, center.z];
+  const normalEnd = center.clone().addScaledVector(normal, 2.4);
+  return (
+    <group>
+      <mesh position={position} quaternion={new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal)}>
+        <planeGeometry args={[size * 2, size * 2, 1, 1]} />
+        <meshBasicMaterial color="#38BDF8" transparent opacity={0.22} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <Line points={[corners[0].toArray(), corners[1].toArray(), corners[2].toArray(), corners[3].toArray(), corners[0].toArray()]} color="#7DD3FC" lineWidth={1.5} />
+      <Line points={[position, [normalEnd.x, normalEnd.y, normalEnd.z]]} color="#F472B6" lineWidth={3.5} />
+      <Text position={[normalEnd.x + 0.12, normalEnd.y + 0.12, normalEnd.z + 0.12]} fontSize={0.23} color="#F9A8D4" outlineWidth={0.02} outlineColor="#0F172A">Normal n</Text>
+    </group>
+  );
+}
+
+function Scene({ distancePointIds, vectorOperation, planeEquation, lineGeometry, sphere, conic }: { distancePointIds: [string, string] | null; vectorOperation: "add" | "subtract"; planeEquation?: { a: number; b: number; c: number; d: number } | null; lineGeometry?: { point: [number, number, number]; direction: [number, number, number] } | null; sphere?: { center: [number, number, number]; radius: number } | null; conic?: { angle: number; offset: number; visible: boolean } }) {
+  const points = useSceneStore((state) => state.points);
+  const selectedOctant = useSceneStore((state) => state.selectedOctant);
 
   return (
     <>
@@ -200,24 +517,17 @@ function Scene() {
         infiniteGrid
       />
 
-            {/* Selected Octant Highlight */}
       {selectedOctant !== null && (
         <OctantHighlight octant={selectedOctant} />
       )}
 
-      {/* Positive and negative X axes */}
       <Axis end={[6, 0, 0]} color="#f87171" label="+X" />
       <Axis end={[-6, 0, 0]} color="#f87171" label="-X" />
-
-      {/* Positive and negative Y axes */}
       <Axis end={[0, 6, 0]} color="#4ade80" label="+Y" />
       <Axis end={[0, -6, 0]} color="#4ade80" label="-Y" />
-
-      {/* Positive and negative Z axes */}
       <Axis end={[0, 0, 6]} color="#60a5fa" label="+Z" />
       <Axis end={[0, 0, -6]} color="#60a5fa" label="-Z" />
 
-      {/* Origin */}
       <mesh>
         <sphereGeometry args={[0.055, 16, 16]} />
         <meshBasicMaterial color="#ffffff" />
@@ -233,7 +543,17 @@ function Scene() {
         O
       </Text>
 
-      <PointA />
+      {points.map((point) => (
+        <PointMarker key={point.id} point={point} />
+      ))}
+      <DistanceSegment points={points} pointIds={distancePointIds} />
+      <VectorOperationGraphic points={points} pointIds={distancePointIds} operation={vectorOperation} />\n      <AngleBetweenVectorsGraphic points={points} pointIds={distancePointIds} />
+      <CrossProductGraphic points={points} pointIds={distancePointIds} />
+      <ConicSectionsGraphic conic={conic ?? { angle: 20, offset: 0, visible: false }} />
+      <SphereGraphic sphere={sphere ?? null} />
+      <LineGeometryGraphic lineGeometry={lineGeometry ?? null} />
+      <PlaneGraphic equation={planeEquation ?? null} />
+      <ProjectionGraphic points={points} pointIds={distancePointIds} />
 
       <OrbitControls
         makeDefault
@@ -247,7 +567,7 @@ function Scene() {
   );
 }
 
-export default function ThreeDScene() {
+export default function ThreeDScene({ distancePointIds = null, vectorOperation = "add", planeEquation = null, lineGeometry = null, sphere = null, conic = null }: { distancePointIds?: [string,string] | null; vectorOperation?: "add" | "subtract"; planeEquation?: { a: number; b: number; c: number; d: number } | null; lineGeometry?: { point: [number, number, number]; direction: [number, number, number] } | null; sphere?: { center: [number, number, number]; radius: number } | null; conic?: { angle: number; offset: number; visible: boolean } | null }) {
   return (
     <Canvas
       className="three-d-canvas"
@@ -262,7 +582,7 @@ export default function ThreeDScene() {
       dpr={[1, 2]}
     >
       <Suspense fallback={null}>
-        <Scene />
+        <Scene distancePointIds={distancePointIds} vectorOperation={vectorOperation} planeEquation={planeEquation} lineGeometry={lineGeometry} sphere={sphere} conic={conic ?? undefined} />
       </Suspense>
     </Canvas>
   );

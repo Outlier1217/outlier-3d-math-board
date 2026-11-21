@@ -116,11 +116,11 @@ function PDFPreview() {
   );
 }
 
-function ThreeDPreview() {
+function ThreeDPreview({ distancePointIds, vectorOperation, planeEquation, lineGeometry, sphere, conic }: { distancePointIds: [string, string] | null; vectorOperation: "add" | "subtract"; planeEquation: { a: number; b: number; c: number; d: number } | null; lineGeometry: { point: [number, number, number]; direction: [number, number, number] } | null; sphere: { center: [number, number, number]; radius: number } | null; conic: { angle: number; offset: number; visible: boolean } }) {
   return (
     <div className="scene-preview">
       <div className="three-d-canvas">
-        <ThreeDScene />
+        <ThreeDScene distancePointIds={distancePointIds} vectorOperation={vectorOperation} planeEquation={planeEquation} lineGeometry={lineGeometry} sphere={sphere} conic={conic} />
       </div>
       <div className="scene-coordinate-label">
         <Crosshair size={13} /> 3D Coordinate System
@@ -133,14 +133,196 @@ function ThreeDPreview() {
 }
 
 export default function Home() {
-  const pointA = useSceneStore((state) => state.pointA);
-  const setPointA = useSceneStore((state) => state.setPointA);
-  const resetPointA = useSceneStore((state) => state.resetPointA);
+  const points = useSceneStore((state) => state.points);
+  const selectedPointId = useSceneStore((state) => state.selectedPointId);
+  const addPoint = useSceneStore((state) => state.addPoint);
+  const updatePoint = useSceneStore((state) => state.updatePoint);
+  const updatePointPosition = useSceneStore((state) => state.updatePointPosition);
+  const deletePoint = useSceneStore((state) => state.deletePoint);
+  const selectPoint = useSceneStore((state) => state.selectPoint);
+  const resetPoints = useSceneStore((state) => state.resetPoints);
   const selectedOctant = useSceneStore((state) => state.selectedOctant);
   const setSelectedOctant = useSceneStore((state) => state.setSelectedOctant);
+  const selectedPoint = points.find((point) => point.id === selectedPointId) ?? null;
+  const selectedPosition = selectedPoint?.position ?? { x: 0, y: 0, z: 0 };
+
+  // Distance tool: defaults to the first two available points.
+  const [distancePointAId, setDistancePointAId] = useState("");
+  const [distancePointBId, setDistancePointBId] = useState("");
+  const defaultDistanceA = points[0]?.id ?? "";
+  const distanceAId = points.some((point) => point.id === distancePointAId) ? distancePointAId : defaultDistanceA;
+  const distanceBId = points.some((point) => point.id === distancePointBId && point.id !== distanceAId) ? distancePointBId : (points.find((point) => point.id !== distanceAId)?.id ?? "");
+  const distancePointA = points.find((point) => point.id === distanceAId) ?? null;
+  const distancePointB = points.find((point) => point.id === distanceBId) ?? null;
+  const distanceA = distancePointA?.position;
+  const distanceB = distancePointB?.position;
+  const dx = distanceA && distanceB ? distanceB.x - distanceA.x : 0;
+  const dy = distanceA && distanceB ? distanceB.y - distanceA.y : 0;
+  const dz = distanceA && distanceB ? distanceB.z - distanceA.z : 0;
+  const pointDistance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  const [vectorOperation, setVectorOperation] = useState<"add" | "subtract">("add");
+  const vectorResult = distanceA && distanceB ? {
+    x: vectorOperation === "add" ? distanceA.x + distanceB.x : distanceA.x - distanceB.x,
+    y: vectorOperation === "add" ? distanceA.y + distanceB.y : distanceA.y - distanceB.y,
+    z: vectorOperation === "add" ? distanceA.z + distanceB.z : distanceA.z - distanceB.z,
+  } : null;
+  const vectorResultMagnitude = vectorResult
+    ? Math.sqrt(vectorResult.x ** 2 + vectorResult.y ** 2 + vectorResult.z ** 2)
+    : 0;
+
+  // Dot product and angle between the two selected position vectors.
+  const dotProductValue = distanceA && distanceB
+    ? distanceA.x * distanceB.x + distanceA.y * distanceB.y + distanceA.z * distanceB.z
+    : 0;
+  const magnitudeA = distanceA
+    ? Math.sqrt(distanceA.x ** 2 + distanceA.y ** 2 + distanceA.z ** 2)
+    : 0;
+  const magnitudeB = distanceB
+    ? Math.sqrt(distanceB.x ** 2 + distanceB.y ** 2 + distanceB.z ** 2)
+    : 0;
+  const cosineAngle = magnitudeA > 0 && magnitudeB > 0
+    ? Math.max(-1, Math.min(1, dotProductValue / (magnitudeA * magnitudeB)))
+    : null;
+  const angleDegrees = cosineAngle === null
+    ? null
+    : Math.acos(cosineAngle) * (180 / Math.PI);
+
+  // Cross product A × B (right-handed coordinate system).
+  const crossProduct = distanceA && distanceB ? {
+    x: distanceA.y * distanceB.z - distanceA.z * distanceB.y,
+    y: distanceA.z * distanceB.x - distanceA.x * distanceB.z,
+    z: distanceA.x * distanceB.y - distanceA.y * distanceB.x,
+  } : null;
+  const crossProductMagnitude = crossProduct
+    ? Math.sqrt(crossProduct.x ** 2 + crossProduct.y ** 2 + crossProduct.z ** 2)
+    : 0;
+
+  // Scalar and vector projections: project A onto B, and B onto A.
+  const projectionAOnB = distanceA && distanceB
+    ? (distanceB.x ** 2 + distanceB.y ** 2 + distanceB.z ** 2) > 0
+      ? {
+          x: (dotProductValue / (distanceB.x ** 2 + distanceB.y ** 2 + distanceB.z ** 2)) * distanceB.x,
+          y: (dotProductValue / (distanceB.x ** 2 + distanceB.y ** 2 + distanceB.z ** 2)) * distanceB.y,
+          z: (dotProductValue / (distanceB.x ** 2 + distanceB.y ** 2 + distanceB.z ** 2)) * distanceB.z,
+        }
+      : null
+    : null;
+  const scalarProjectionAOnB = magnitudeB > 0 ? dotProductValue / magnitudeB : null;
+  const projectionBOnA = distanceA && distanceB && magnitudeA > 0
+    ? {
+        x: (dotProductValue / (magnitudeA ** 2)) * distanceA.x,
+        y: (dotProductValue / (magnitudeA ** 2)) * distanceA.y,
+        z: (dotProductValue / (magnitudeA ** 2)) * distanceA.z,
+      }
+    : null;
+  const scalarProjectionBOnA = magnitudeA > 0 ? dotProductValue / magnitudeA : null;
+
+  // Interactive double-cone section: angle is measured from a horizontal plane.
+  const [conicAngle, setConicAngle] = useState(20);
+  const [conicOffset, setConicOffset] = useState(0);
+  const [conicVisible, setConicVisible] = useState(true);
+  const coneHalfAngle = 35;
+  const conicType = conicAngle < 0.5
+    ? "Circle"
+    : Math.abs(conicAngle - (90 - coneHalfAngle)) <= 1
+      ? "Parabola"
+      : conicAngle < (90 - coneHalfAngle)
+        ? "Ellipse"
+        : "Hyperbola";
+  const conicEquation = `z = ${Number(Math.tan(conicAngle * Math.PI / 180).toFixed(4))}x + ${conicOffset}`;
+
+  // Sphere defined by centre (h, k, l) and radius r.
+  const [sphereCenter, setSphereCenter] = useState({ x: 0, y: 0, z: 0 });
+  const [sphereRadius, setSphereRadius] = useState(3);
+  const [sphereVisible, setSphereVisible] = useState(true);
+  const [sphereTestPointId, setSphereTestPointId] = useState("");
+  const sphereTestPoint = points.find((point) => point.id === sphereTestPointId) ?? null;
+  const sphereTestDistance = sphereTestPoint
+    ? Math.hypot(
+        sphereTestPoint.position.x - sphereCenter.x,
+        sphereTestPoint.position.y - sphereCenter.y,
+        sphereTestPoint.position.z - sphereCenter.z,
+      )
+    : null;
+  const spherePointRelation = sphereTestDistance === null || sphereRadius <= 0
+    ? null
+    : Math.abs(sphereTestDistance - sphereRadius) <= 1e-6
+      ? "on"
+      : sphereTestDistance < sphereRadius ? "inside" : "outside";
+  const sphereSurfaceArea = 4 * Math.PI * sphereRadius ** 2;
+  const sphereVolume = (4 / 3) * Math.PI * sphereRadius ** 3;
+  const sphereEquation = `(x - (${sphereCenter.x}))² + (y - (${sphereCenter.y}))² + (z - (${sphereCenter.z}))² = ${Number((sphereRadius ** 2).toFixed(4))}`;
+  const sphereGeometry = sphereVisible && sphereRadius > 0
+    ? { center: [sphereCenter.x, sphereCenter.y, sphereCenter.z] as [number, number, number], radius: sphereRadius }
+    : null;
+
+  // 3D line through two selected points and distance from a third point.
+  const [linePointAId, setLinePointAId] = useState("");
+  const [linePointBId, setLinePointBId] = useState("");
+  const [lineTestPointId, setLineTestPointId] = useState("");
+  const lineAId = points.some((point) => point.id === linePointAId) ? linePointAId : (points[0]?.id ?? "");
+  const lineBId = points.some((point) => point.id === linePointBId && point.id !== lineAId)
+    ? linePointBId : (points.find((point) => point.id !== lineAId)?.id ?? "");
+  const lineTestPoint = points.find((point) => point.id === lineTestPointId && point.id !== lineAId && point.id !== lineBId)
+    ?? points.find((point) => point.id !== lineAId && point.id !== lineBId) ?? null;
+  const linePointA = points.find((point) => point.id === lineAId) ?? null;
+  const linePointB = points.find((point) => point.id === lineBId) ?? null;
+  const lineA = linePointA?.position ?? null;
+  const lineB = linePointB?.position ?? null;
+  const lineDirection = lineA && lineB
+    ? { x: lineB.x - lineA.x, y: lineB.y - lineA.y, z: lineB.z - lineA.z } : null;
+  const lineDirectionMagnitude = lineDirection ? Math.hypot(lineDirection.x, lineDirection.y, lineDirection.z) : 0;
+  const lineIsValid = Boolean(lineA && lineB && lineDirection && lineDirectionMagnitude > 1e-8);
+  const lineGeometry = lineIsValid && lineA && lineDirection
+    ? { point: [lineA.x, lineA.y, lineA.z] as [number, number, number], direction: [lineDirection.x, lineDirection.y, lineDirection.z] as [number, number, number] }
+    : null;
+  const pointToLineDistance = lineIsValid && lineA && lineDirection && lineTestPoint
+    ? Math.hypot(
+        (lineTestPoint.position.y - lineA.y) * lineDirection.z - (lineTestPoint.position.z - lineA.z) * lineDirection.y,
+        (lineTestPoint.position.z - lineA.z) * lineDirection.x - (lineTestPoint.position.x - lineA.x) * lineDirection.z,
+        (lineTestPoint.position.x - lineA.x) * lineDirection.y - (lineTestPoint.position.y - lineA.y) * lineDirection.x,
+      ) / lineDirectionMagnitude : null;
+  const lineParametric = lineA && lineDirection ? [
+    `x = ${lineA.x} + λ(${lineDirection.x})`,
+    `y = ${lineA.y} + λ(${lineDirection.y})`,
+    `z = ${lineA.z} + λ(${lineDirection.z})`,
+  ] : [];
+  const lineSymmetric = lineA && lineDirection ? [
+    lineDirection.x === 0 ? `x = ${lineA.x}` : `(x - ${lineA.x})/${lineDirection.x}`,
+    lineDirection.y === 0 ? `y = ${lineA.y}` : `(y - ${lineA.y})/${lineDirection.y}`,
+    lineDirection.z === 0 ? `z = ${lineA.z}` : `(z - ${lineA.z})/${lineDirection.z}`,
+  ] : [];
+
+  // Plane equation n·x + d = 0 and optional plane through three selected points.
+  const [planeMode, setPlaneMode] = useState<"coefficients" | "three-points">("coefficients");
+  const [planeCoefficients, setPlaneCoefficients] = useState({ a: 1, b: 1, c: 1, d: -4 });
+  const [planePointIds, setPlanePointIds] = useState<[string, string, string]>(["", "", ""]);
+  const planeNormal = { x: planeCoefficients.a, y: planeCoefficients.b, z: planeCoefficients.c };
+  const planeNormalMagnitude = Math.hypot(planeNormal.x, planeNormal.y, planeNormal.z);
+  const planePoints = planePointIds.map((id) => points.find((point) => point.id === id) ?? null);
+  const planeHasThreePoints = planePoints.every((point) => point !== null);
+  const planeA = planeHasThreePoints ? planePoints[0]!.position : null;
+  const planeB = planeHasThreePoints ? planePoints[1]!.position : null;
+  const planeC = planeHasThreePoints ? planePoints[2]!.position : null;
+  const planeAB = planeA && planeB ? { x: planeB.x-planeA.x, y: planeB.y-planeA.y, z: planeB.z-planeA.z } : null;
+  const planeAC = planeA && planeC ? { x: planeC.x-planeA.x, y: planeC.y-planeA.y, z: planeC.z-planeA.z } : null;
+  const threePointNormal = planeAB && planeAC ? {
+    x: planeAB.y*planeAC.z-planeAB.z*planeAC.y,
+    y: planeAB.z*planeAC.x-planeAB.x*planeAC.z,
+    z: planeAB.x*planeAC.y-planeAB.y*planeAC.x,
+  } : null;
+  const threePointNormalMagnitude = threePointNormal ? Math.hypot(threePointNormal.x, threePointNormal.y, threePointNormal.z) : 0;
+  const threePointD = planeA && threePointNormal
+    ? -(threePointNormal.x*planeA.x + threePointNormal.y*planeA.y + threePointNormal.z*planeA.z)
+    : 0;
+  const activePlane = planeMode === "three-points" && threePointNormal && threePointNormalMagnitude > 1e-8
+    ? { a: threePointNormal.x, b: threePointNormal.y, c: threePointNormal.z, d: threePointD }
+    : planeCoefficients;
+  const activePlaneNormalMagnitude = Math.hypot(activePlane.a, activePlane.b, activePlane.c);
+  const planeIsValid = activePlaneNormalMagnitude > 1e-8;
 
   const [octantMode, setOctantMode] = useState<"auto" | "manual">("auto");
-  const detectedOctant = detectOctant(pointA);
+  const detectedOctant = selectedPoint ? detectOctant(selectedPoint.position) : null;
   const activeOctant = octantMode === "auto" ? detectedOctant : selectedOctant;
 
   const octantSigns: Record<Octant, string> = {
@@ -168,7 +350,6 @@ export default function Home() {
   const [rightOpen, setRightOpen] = useState(true);
   const [splitView, setSplitView] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
-  const [selectedObject, setSelectedObject] = useState("Point A");
   const [fontSize, setFontSize] = useState("18");
   const [bold, setBold] = useState(false);
   const [italic, setItalic] = useState(false);
@@ -367,7 +548,7 @@ export default function Home() {
                 { label: "Solid shapes", icon: Box },
               ].map((item) => {
                 const Icon = item.icon;
-                return <button key={item.label} className="sidebar-tool" onClick={() => setSelectedObject(item.label)}>
+                return <button key={item.label} className="sidebar-tool" onClick={() => item.label === "Point" ? addPoint() : setActiveTool("select")}>
                   <Icon size={16} /> {item.label}
                 </button>;
               })}
@@ -378,7 +559,7 @@ export default function Home() {
                 <Grid3X3 size={16} /> Grid
                 <span className={`toggle-dot ${showGrid ? "toggle-on" : ""}`} />
               </button>
-              <button className="sidebar-tool" onClick={() => setSelectedObject("Coordinate Axes")}>
+              <button className="sidebar-tool" onClick={() => setActiveTool("select")}>
                 <Crosshair size={16} /> Coordinate axes
               </button>
             </div>
@@ -436,23 +617,30 @@ export default function Home() {
                       <p>Handwriting canvas engine will be connected next.</p>
                     </div>
                   </div>
-                ) : <ThreeDPreview />}
+                ) : <ThreeDPreview distancePointIds={distanceAId && distanceBId ? [distanceAId, distanceBId] : null} vectorOperation={vectorOperation} planeEquation={planeIsValid && (planeMode === "coefficients" || (planeHasThreePoints && threePointNormalMagnitude > 1e-8)) ? activePlane : null} lineGeometry={lineGeometry} sphere={sphereGeometry} conic={{ angle: conicAngle, offset: conicOffset, visible: conicVisible }} />}
               </section>
             )}
           </div>
 
           <div className="bottom-explorer">
             <div className="explorer-title"><Layers size={15}/> OBJECT EXPLORER</div>
-            {["Point A", "Vector OA", "Plane P"].map((name, i) => (
-              <button key={name} className={`explorer-item ${selectedObject === name ? "explorer-selected" : ""}`} onClick={() => setSelectedObject(name)}>
-                {i === 0 ? <Circle size={13}/> : i === 1 ? <ArrowUpRight size={13}/> : <Square size={13}/>}
-                {name}
-                <span className="object-visible"><Eye size={12}/></span>
+            {points.map((point) => (
+              <button
+                key={point.id}
+                className={`explorer-item ${selectedPointId === point.id ? "explorer-selected" : ""}`}
+                onClick={() => selectPoint(point.id)}
+                title={`${point.name} (${point.position.x}, ${point.position.y}, ${point.position.z})`}
+              >
+                <Circle size={13} fill={point.color} color={point.color}/>
+                {point.name}
+                <span className="object-visible" onClick={(event) => { event.stopPropagation(); updatePoint(point.id, { visible: !point.visible }); }}>
+                  <Eye size={12} style={{ opacity: point.visible ? 1 : 0.35 }}/>
+                </span>
               </button>
             ))}
-            <button className="explorer-add" onClick={() => setSelectedObject("New Object")}><Plus size={14}/> Add object</button>
+            <button className="explorer-add" onClick={addPoint}><Plus size={14}/> Add Point</button>
             <div className="explorer-spacer"/>
-            <span className="scene-count">3 OBJECTS</span>
+            <span className="scene-count">{points.length} POINT{points.length === 1 ? "" : "S"}</span>
           </div>
         </section>
 
@@ -465,8 +653,8 @@ export default function Home() {
             <div className="inspector-section">
               <span className="sidebar-group-label">SELECTION</span>
               <div className="selected-object-card">
-                <div className="selected-object-icon"><Box size={18}/></div>
-                <div><strong>{selectedObject}</strong><small>Mathematical object</small></div>
+                <div className="selected-object-icon"><Circle size={18} color={selectedPoint?.color ?? "currentColor"}/></div>
+                <div><strong>{selectedPoint?.name ?? "No point selected"}</strong><small>{selectedPoint ? "3D point" : "Select a point in the Object Explorer"}</small></div>
               </div>
             </div>
             <div className="inspector-section">
@@ -477,19 +665,443 @@ export default function Home() {
                   <input
                     type="number"
                     step="any"
-                    value={pointA[axis]}
+                    value={selectedPoint ? selectedPosition[axis] : 0}
+                    disabled={!selectedPoint}
                     onChange={(e) => {
                       const value = e.target.value;
-                      if (value === "" || value === "-") return;
+                      if (!selectedPoint || value === "" || value === "-") return;
                       const number = Number(value);
                       if (Number.isFinite(number)) {
-                        setPointA({ [axis]: number });
+                        updatePointPosition(selectedPoint.id, { [axis]: number });
                       }
                     }}
                   />
                 </label>
               ))}
             </div>
+            <div className="inspector-section">
+              <span className="sidebar-group-label">POSITION VECTOR</span>
+              {selectedPoint ? (
+                <div style={{
+                  marginTop: 8,
+                  padding: 11,
+                  borderRadius: 8,
+                  background: "rgba(34, 197, 94, 0.07)",
+                  border: "1px solid rgba(34, 197, 94, 0.2)",
+                  fontSize: 11,
+                  lineHeight: 1.8,
+                }}>
+                  <strong style={{ display: "block", color: "#86EFAC", marginBottom: 5 }}>
+                    r⃗ {selectedPoint.name.replace("Point ", "")} = O{selectedPoint.name.replace("Point ", "")}
+                  </strong>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "#E2E8F0", marginBottom: 5 }}>
+                    {selectedPosition.x}i + ({selectedPosition.y})j + ({selectedPosition.z})k
+                  </div>
+                  <div>
+                    r⃗ = ({selectedPosition.x}, {selectedPosition.y}, {selectedPosition.z})
+                  </div>
+                  <div style={{ marginTop: 5, color: "#CBD5E1" }}>
+                    |r⃗| = √(x² + y² + z²)
+                  </div>
+                  <div>
+                    |r⃗| = √({selectedPosition.x ** 2} + {selectedPosition.y ** 2} + {selectedPosition.z ** 2})
+                  </div>
+                  <strong style={{ display: "block", color: "#86EFAC", marginTop: 4 }}>
+                    |r⃗| = {Number(Math.sqrt(
+                      selectedPosition.x ** 2 +
+                      selectedPosition.y ** 2 +
+                      selectedPosition.z ** 2
+                    ).toFixed(4))}
+                  </strong>
+                </div>
+              ) : (
+                <p style={{ fontSize: 11, color: "var(--muted, #94a3b8)" }}>
+                  Select a point to view its position vector.
+                </p>
+              )}
+            </div>
+
+            <div className="inspector-section">
+              <span className="sidebar-group-label">VECTOR OPERATIONS</span>
+              <div style={{ display: "flex", gap: 6, marginTop: 8, marginBottom: 10 }}>
+                <button type="button" onClick={() => setVectorOperation("add")} style={{ flex: 1, padding: "8px 6px", borderRadius: 7, border: "1px solid", borderColor: vectorOperation === "add" ? "#22C55E" : "var(--border, #30303a)", background: vectorOperation === "add" ? "rgba(34,197,94,0.14)" : "transparent", color: vectorOperation === "add" ? "#86EFAC" : "inherit", cursor: "pointer", fontSize: 11 }}>A + B</button>
+                <button type="button" onClick={() => setVectorOperation("subtract")} style={{ flex: 1, padding: "8px 6px", borderRadius: 7, border: "1px solid", borderColor: vectorOperation === "subtract" ? "#A78BFA" : "var(--border, #30303a)", background: vectorOperation === "subtract" ? "rgba(167,139,250,0.14)" : "transparent", color: vectorOperation === "subtract" ? "#C4B5FD" : "inherit", cursor: "pointer", fontSize: 11 }}>A − B</button>
+              </div>
+              {distancePointA && distancePointB && vectorResult ? (
+                <div style={{ padding: 11, borderRadius: 8, background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.18)", fontSize: 11, lineHeight: 1.75 }}>
+                  <strong>{distancePointA.name} {vectorOperation === "add" ? "+" : "−"} {distancePointB.name}</strong>
+                  <div>A = ({distanceA!.x}, {distanceA!.y}, {distanceA!.z})</div>
+                  <div>B = ({distanceB!.x}, {distanceB!.y}, {distanceB!.z})</div>
+                  <div>{vectorOperation === "add" ? "A + B" : "A − B"} = ({vectorResult.x}, {vectorResult.y}, {vectorResult.z})</div>
+                  <strong>R = {vectorResult.x}i + ({vectorResult.y})j + ({vectorResult.z})k</strong>
+                  <div>|R| = √({vectorResult.x ** 2} + {vectorResult.y ** 2} + {vectorResult.z ** 2})</div>
+                  <strong>|R| = {Number(vectorResultMagnitude.toFixed(4))}</strong>
+                </div>
+              ) : <p style={{ fontSize: 11 }}>Add at least two points to calculate vector operations.</p>}
+            </div>
+
+            <div className="inspector-section">
+              <span className="sidebar-group-label">SCALAR &amp; VECTOR PROJECTION</span>
+              {distancePointA && distancePointB ? (
+                <div style={{ marginTop: 8, padding: 11, borderRadius: 8, background: "rgba(217,70,239,0.07)", border: "1px solid rgba(217,70,239,0.22)", fontSize: 11, lineHeight: 1.75 }}>
+                  <strong style={{ display: "block", color: "#F0ABFC", marginBottom: 5 }}>
+                    Projection of A onto B
+                  </strong>
+                  {magnitudeB > 0 && projectionAOnB ? (
+                    <>
+                      <div>Scalar projection = (A · B) / |B|</div>
+                      <div>= {Number(dotProductValue.toFixed(4))} / {Number(magnitudeB.toFixed(4))}</div>
+                      <strong style={{ color: "#E9D5FF" }}>
+                        compB A = {Number(scalarProjectionAOnB!.toFixed(4))}
+                      </strong>
+                      <div style={{ marginTop: 5 }}>Vector projection = [(A · B) / |B|²] B</div>
+                      <div>projB A = ({Number(projectionAOnB.x.toFixed(4))}, {Number(projectionAOnB.y.toFixed(4))}, {Number(projectionAOnB.z.toFixed(4))})</div>
+                      <div>|projB A| = {Number(Math.hypot(projectionAOnB.x, projectionAOnB.y, projectionAOnB.z).toFixed(4))}</div>
+                    </>
+                  ) : (
+                    <div style={{ color: "#FCA5A5" }}>Projection onto B is undefined because B is the zero vector.</div>
+                  )}
+                  <div style={{ borderTop: "1px solid rgba(217,70,239,0.18)", marginTop: 9, paddingTop: 8 }}>
+                    <strong style={{ display: "block", color: "#F0ABFC", marginBottom: 4 }}>
+                      Projection of B onto A
+                    </strong>
+                    {magnitudeA > 0 && projectionBOnA ? (
+                      <>
+                        <div>Scalar projection = (A · B) / |A|</div>
+                        <strong style={{ color: "#E9D5FF" }}>
+                          compA B = {Number(scalarProjectionBOnA!.toFixed(4))}
+                        </strong>
+                        <div>projA B = ({Number(projectionBOnA.x.toFixed(4))}, {Number(projectionBOnA.y.toFixed(4))}, {Number(projectionBOnA.z.toFixed(4))})</div>
+                        <div>|projA B| = {Number(Math.hypot(projectionBOnA.x, projectionBOnA.y, projectionBOnA.z).toFixed(4))}</div>
+                      </>
+                    ) : (
+                      <div style={{ color: "#FCA5A5" }}>Projection onto A is undefined because A is the zero vector.</div>
+                    )}
+                  </div>
+                  <div style={{ color: "#94A3B8", marginTop: 7 }}>
+                    The projection vector lies along the target vector; the perpendicular segment shows the component of the source vector normal to that target.
+                  </div>
+                </div>
+              ) : (
+                <p style={{ fontSize: 11, color: "var(--muted, #94a3b8)" }}>
+                  Add at least two points to calculate projections.
+                </p>
+              )}
+            </div>
+
+            <div className="inspector-section">
+              <span className="sidebar-group-label">3D CONIC SECTIONS</span>
+              <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 10, color: "#CBD5E1", marginTop: 8, marginBottom: 8 }}>
+                <input type="checkbox" checked={conicVisible} onChange={(event) => setConicVisible(event.target.checked)} />
+                Show cone and cutting plane
+              </label>
+              <label style={{ display: "block", fontSize: 10, color: "#94A3B8", marginTop: 7 }}>
+                Plane inclination: {conicAngle.toFixed(1)}°
+                <input type="range" min="0" max="80" step="0.5" value={conicAngle} onChange={(event) => setConicAngle(Number(event.target.value))} style={{ width: "100%", marginTop: 6, accentColor: "#F59E0B" }} />
+              </label>
+              <label style={{ display: "block", fontSize: 10, color: "#94A3B8", marginTop: 9 }}>
+                Plane height / offset: {conicOffset.toFixed(1)}
+                <input type="range" min="-3" max="3" step="0.1" value={conicOffset} onChange={(event) => setConicOffset(Number(event.target.value))} style={{ width: "100%", marginTop: 6, accentColor: "#F59E0B" }} />
+              </label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 9 }}>
+                {([{ label: "Circle", angle: 0 }, { label: "Ellipse", angle: 20 }, { label: "Parabola", angle: 55 }, { label: "Hyperbola", angle: 70 }] as const).map((preset) => (
+                  <button key={preset.label} type="button" onClick={() => { setConicAngle(preset.angle); setConicOffset(0); }} style={{ padding: "6px 7px", borderRadius: 6, border: "1px solid", borderColor: conicAngle === preset.angle ? "#F59E0B" : "var(--border, #30303a)", background: conicAngle === preset.angle ? "rgba(245,158,11,0.14)" : "transparent", color: conicAngle === preset.angle ? "#FCD34D" : "inherit", cursor: "pointer", fontSize: 9 }}>{preset.label}</button>
+                ))}
+              </div>
+              <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.2)", fontSize: 10, lineHeight: 1.7, color: "#FDE68A" }}>
+                <strong style={{ display: "block", color: "#FCD34D", fontSize: 13 }}>{conicType}</strong>
+                <div>Double cone half-angle = {coneHalfAngle}°</div>
+                <div>Plane inclination = {conicAngle.toFixed(1)}°</div>
+                <div>Plane: {conicEquation}</div>
+                <div style={{ color: "#CBD5E1", marginTop: 5 }}>
+                  {conicType === "Circle" ? "Plane is perpendicular to the cone axis." :
+                   conicType === "Ellipse" ? "Plane cuts one nappe at an angle smaller than the cone generator angle." :
+                   conicType === "Parabola" ? "Plane is parallel to a generator of the cone." :
+                   "Plane intersects both nappes of the double cone."}
+                </div>
+              </div>
+            </div>
+
+            <div className="inspector-section">
+              <span className="sidebar-group-label">3D SPHERE GEOMETRY</span>
+              <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 10, color: "#CBD5E1", marginTop: 8, marginBottom: 8 }}>
+                <input type="checkbox" checked={sphereVisible} onChange={(event) => setSphereVisible(event.target.checked)} />
+                Show sphere
+              </label>
+              <div style={{ fontSize: 10, color: "#94A3B8", marginBottom: 6 }}>Centre coordinates (h, k, l)</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 5 }}>
+                {(["x", "y", "z"] as const).map((axis) => (
+                  <label key={axis} style={{ fontSize: 10, color: "#94A3B8" }}>
+                    {axis.toUpperCase()}
+                    <input type="number" value={sphereCenter[axis]} onChange={(event) => setSphereCenter((current) => ({ ...current, [axis]: Number(event.target.value) }))} style={{ width: "100%", minWidth: 0, marginTop: 3, padding: "6px 4px", borderRadius: 5, background: "var(--input, #111827)", color: "inherit", border: "1px solid var(--border, #30303a)" }} />
+                  </label>
+                ))}
+              </div>
+              <label style={{ display: "block", fontSize: 10, color: "#94A3B8", marginTop: 8 }}>
+                Radius (r)
+                <input type="number" min="0.01" step="0.5" value={sphereRadius} onChange={(event) => setSphereRadius(Math.max(0, Number(event.target.value)))} style={{ width: "100%", marginTop: 3, padding: "6px 7px", borderRadius: 5, background: "var(--input, #111827)", color: "inherit", border: "1px solid var(--border, #30303a)" }} />
+              </label>
+              <div style={{ marginTop: 9, padding: 10, borderRadius: 8, background: "rgba(167,139,250,0.08)", border: "1px solid rgba(167,139,250,0.22)", fontSize: 10, lineHeight: 1.75, color: "#DDD6FE" }}>
+                <strong style={{ display: "block", color: "#C4B5FD" }}>Sphere equation</strong>
+                {sphereEquation}
+                <div>Centre: ({sphereCenter.x}, {sphereCenter.y}, {sphereCenter.z})</div>
+                <div>Diameter = {Number((2 * sphereRadius).toFixed(4))}</div>
+                <div>Surface area = 4πr² = {Number(sphereSurfaceArea.toFixed(4))}</div>
+                <div>Volume = ⁴⁄₃πr³ = {Number(sphereVolume.toFixed(4))}</div>
+                {sphereRadius <= 0 && <div style={{ color: "#FCA5A5" }}>Radius must be greater than zero.</div>}
+              </div>
+              <div style={{ marginTop: 10, paddingTop: 9, borderTop: "1px solid var(--border, #30303a)" }}>
+                <strong style={{ display: "block", fontSize: 10, color: "#C4B5FD", marginBottom: 6 }}>POINT POSITION RELATIVE TO SPHERE</strong>
+                <label className="property-row">
+                  <span>Test point</span>
+                  <select value={sphereTestPointId} onChange={(event) => setSphereTestPointId(event.target.value)}>
+                    <option value="">Select point</option>
+                    {points.map((point) => <option key={point.id} value={point.id}>{point.name}</option>)}
+                  </select>
+                </label>
+                {sphereTestPoint && sphereTestDistance !== null && spherePointRelation ? (
+                  <div style={{ fontSize: 10, color: "#DDD6FE", marginTop: 6, lineHeight: 1.65 }}>
+                    <div>Distance from centre = {Number(sphereTestDistance.toFixed(4))}</div>
+                    <strong style={{ color: spherePointRelation === "on" ? "#86EFAC" : "#C4B5FD" }}>
+                      Point is {spherePointRelation} the sphere
+                    </strong>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 5 }}>Select a point to check whether it is inside, on, or outside the sphere.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="inspector-section">
+              <span className="sidebar-group-label">3D LINE GEOMETRY</span>
+              <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 7, marginBottom: 6 }}>Select two distinct points to define a line.</div>
+              {(["A", "B"] as const).map((label, index) => {
+                const value = index === 0 ? lineAId : lineBId;
+                const onChange = index === 0 ? setLinePointAId : setLinePointBId;
+                const excludedId = index === 0 ? lineBId : lineAId;
+                return (
+                  <label key={label} className="property-row">
+                    <span>Point {label}</span>
+                    <select value={value} onChange={(event) => onChange(event.target.value)}>
+                      <option value="">Select point</option>
+                      {points.filter((point) => point.id !== excludedId).map((point) => (
+                        <option key={point.id} value={point.id}>{point.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                );
+              })}
+              {lineIsValid && lineA && lineDirection ? (
+                <div style={{ marginTop: 9, padding: 10, borderRadius: 8, background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.2)", fontSize: 10, lineHeight: 1.75, color: "#CBD5E1" }}>
+                  <strong style={{ display: "block", color: "#86EFAC" }}>Direction vector</strong>
+                  d = ({lineDirection.x}, {lineDirection.y}, {lineDirection.z})
+                  <div>|d| = {Number(lineDirectionMagnitude.toFixed(4))}</div>
+                  <strong style={{ display: "block", color: "#86EFAC", marginTop: 6 }}>Vector equation</strong>
+                  r = ({lineA.x}, {lineA.y}, {lineA.z}) + λ({lineDirection.x}, {lineDirection.y}, {lineDirection.z})
+                  <strong style={{ display: "block", color: "#86EFAC", marginTop: 6 }}>Parametric equations</strong>
+                  {lineParametric.map((equation) => <div key={equation}>{equation}</div>)}
+                  <strong style={{ display: "block", color: "#86EFAC", marginTop: 6 }}>Symmetric equations</strong>
+                  {lineSymmetric.join(" = ")}
+                </div>
+              ) : (
+                <p style={{ fontSize: 10, color: "#FCA5A5", marginTop: 7 }}>Select two distinct points with different coordinates to define a line.</p>
+              )}
+              <div style={{ marginTop: 10, paddingTop: 9, borderTop: "1px solid var(--border, #30303a)" }}>
+                <strong style={{ display: "block", fontSize: 10, color: "#C4B5FD", marginBottom: 6 }}>POINT-TO-LINE DISTANCE</strong>
+                <label className="property-row">
+                  <span>Test point</span>
+                  <select value={lineTestPoint?.id ?? ""} onChange={(event) => setLineTestPointId(event.target.value)}>
+                    <option value="">Select point</option>
+                    {points.filter((point) => point.id !== lineAId && point.id !== lineBId).map((point) => (
+                      <option key={point.id} value={point.id}>{point.name}</option>
+                    ))}
+                  </select>
+                </label>
+                {pointToLineDistance !== null ? (
+                  <div style={{ fontSize: 10, color: "#DDD6FE", marginTop: 6, lineHeight: 1.6 }}>
+                    <div>d(P, L) = |AP × AB| / |AB|</div>
+                    <strong style={{ fontSize: 13, color: "#C4B5FD" }}>{Number(pointToLineDistance.toFixed(4))}</strong>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 5 }}>Add a third point to calculate its perpendicular distance from the line.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="inspector-section">
+              <span className="sidebar-group-label">3D PLANE GEOMETRY</span>
+              <div style={{ display: "flex", gap: 6, marginTop: 8, marginBottom: 10 }}>
+                <button type="button" onClick={() => setPlaneMode("coefficients")} style={{ flex: 1, padding: "7px 5px", borderRadius: 7, border: "1px solid", borderColor: planeMode === "coefficients" ? "#38BDF8" : "var(--border, #30303a)", background: planeMode === "coefficients" ? "rgba(56,189,248,0.13)" : "transparent", color: planeMode === "coefficients" ? "#7DD3FC" : "inherit", cursor: "pointer", fontSize: 10 }}>Equation</button>
+                <button type="button" onClick={() => setPlaneMode("three-points")} style={{ flex: 1, padding: "7px 5px", borderRadius: 7, border: "1px solid", borderColor: planeMode === "three-points" ? "#38BDF8" : "var(--border, #30303a)", background: planeMode === "three-points" ? "rgba(56,189,248,0.13)" : "transparent", color: planeMode === "three-points" ? "#7DD3FC" : "inherit", cursor: "pointer", fontSize: 10 }}>3 Points</button>
+              </div>
+              {planeMode === "coefficients" ? (
+                <>
+                  <div style={{ fontSize: 11, color: "#CBD5E1", marginBottom: 7 }}>ax + by + cz + d = 0</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 5 }}>
+                    {(["a", "b", "c", "d"] as const).map((key) => (
+                      <label key={key} style={{ fontSize: 10, color: "#94A3B8" }}>
+                        {key}
+                        <input type="number" value={planeCoefficients[key]} onChange={(event) => setPlaneCoefficients((current) => ({ ...current, [key]: Number(event.target.value) }))} style={{ width: "100%", minWidth: 0, marginTop: 3, padding: "6px 4px", borderRadius: 5, background: "var(--input, #111827)", color: "inherit", border: "1px solid var(--border, #30303a)" }} />
+                      </label>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 10, color: "#94A3B8", marginBottom: 6 }}>Choose three distinct points:</div>
+                  {([0, 1, 2] as const).map((index) => (
+                    <label key={index} className="property-row">
+                      <span>Point {String.fromCharCode(65 + index)}</span>
+                      <select value={planePointIds[index]} onChange={(event) => setPlanePointIds((current) => current.map((id, i) => i === index ? event.target.value : id) as [string, string, string])}>
+                        <option value="">Select point</option>
+                        {points.filter((point) => !planePointIds.some((id, i) => i !== index && id === point.id)).map((point) => (
+                          <option key={point.id} value={point.id}>{point.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                  {planeHasThreePoints && threePointNormal && threePointNormalMagnitude > 1e-8 ? (
+                    <div style={{ fontSize: 10, color: "#CBD5E1", lineHeight: 1.6, marginTop: 7 }}>
+                      <div>AB = ({planeAB!.x}, {planeAB!.y}, {planeAB!.z})</div>
+                      <div>AC = ({planeAC!.x}, {planeAC!.y}, {planeAC!.z})</div>
+                      <div>n = AB × AC = ({threePointNormal.x}, {threePointNormal.y}, {threePointNormal.z})</div>
+                      <div>d = −n · A = {Number(threePointD.toFixed(4))}</div>
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: 10, color: "#FCA5A5", marginTop: 6 }}>
+                      Select three distinct, non-collinear points to define a plane.
+                    </p>
+                  )}
+                </>
+              )}
+              <div style={{ marginTop: 9, padding: 10, borderRadius: 8, background: "rgba(56,189,248,0.07)", border: "1px solid rgba(56,189,248,0.2)", fontSize: 11, lineHeight: 1.7 }}>
+                {planeMode === "three-points" && (!planeHasThreePoints || !threePointNormal || threePointNormalMagnitude <= 1e-8) ? (
+                  <strong style={{ color: "#FCA5A5" }}>A valid plane needs three non-collinear points.</strong>
+                ) : planeIsValid ? (
+                  <>
+                    <strong style={{ display: "block", color: "#7DD3FC" }}>Plane equation</strong>
+                    {Number(activePlane.a.toFixed(4))}x + ({Number(activePlane.b.toFixed(4))})y + ({Number(activePlane.c.toFixed(4))})z + ({Number(activePlane.d.toFixed(4))}) = 0
+                    <strong style={{ display: "block", color: "#BAE6FD", marginTop: 5 }}>Normal vector</strong>
+                    n = ({Number(activePlane.a.toFixed(4))}, {Number(activePlane.b.toFixed(4))}, {Number(activePlane.c.toFixed(4))})
+                    <div>|n| = {Number(activePlaneNormalMagnitude.toFixed(4))}</div>
+                  </>
+                ) : (
+                  <strong style={{ color: "#FCA5A5" }}>Normal vector cannot be zero.</strong>
+                )}
+              </div>
+            </div>
+
+            <div className="inspector-section">
+              <span className="sidebar-group-label">CROSS PRODUCT</span>
+              {distancePointA && distancePointB && crossProduct ? (
+                <div style={{ marginTop: 8, padding: 11, borderRadius: 8, background: "rgba(14,165,233,0.07)", border: "1px solid rgba(14,165,233,0.22)", fontSize: 11, lineHeight: 1.75 }}>
+                  <strong style={{ display: "block", color: "#7DD3FC", marginBottom: 5 }}>
+                    {distancePointA.name} × {distancePointB.name}
+                  </strong>
+                  <div>A = ({distanceA!.x}, {distanceA!.y}, {distanceA!.z})</div>
+                  <div>B = ({distanceB!.x}, {distanceB!.y}, {distanceB!.z})</div>
+                  <div style={{ marginTop: 7, color: "#CBD5E1" }}>Using determinant method:</div>
+                  <div style={{ fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
+                    A × B = | i   j   k |{"\n"}        | {distanceA!.x}   {distanceA!.y}   {distanceA!.z} |{"\n"}        | {distanceB!.x}   {distanceB!.y}   {distanceB!.z} |
+                  </div>
+                  <div style={{ marginTop: 7 }}>
+                    = ({distanceA!.y}×{distanceB!.z} − {distanceA!.z}×{distanceB!.y})i
+                  </div>
+                  <div>
+                    + ({distanceA!.z}×{distanceB!.x} − {distanceA!.x}×{distanceB!.z})j
+                  </div>
+                  <div>
+                    + ({distanceA!.x}×{distanceB!.y} − {distanceA!.y}×{distanceB!.x})k
+                  </div>
+                  <strong style={{ display: "block", color: "#BAE6FD", marginTop: 6 }}>
+                    A × B = ({crossProduct.x}, {crossProduct.y}, {crossProduct.z})
+                  </strong>
+                  <div style={{ marginTop: 7, color: "#CBD5E1" }}>
+                    |A × B| = √({crossProduct.x ** 2} + {crossProduct.y ** 2} + {crossProduct.z ** 2})
+                  </div>
+                  <strong style={{ display: "block", color: "#86EFAC", marginTop: 3 }}>
+                    |A × B| = {Number(crossProductMagnitude.toFixed(4))}
+                  </strong>
+                  <div style={{ marginTop: 7, color: "#CBD5E1" }}>
+                    Area of parallelogram = |A × B| = {Number(crossProductMagnitude.toFixed(4))} square units
+                  </div>
+                  <div style={{ color: "#94A3B8", marginTop: 4 }}>
+                    A × B is perpendicular to both A and B.
+                    {crossProductMagnitude < 1e-8 ? " The vectors are parallel (or one is zero), so the cross product is zero." : ""}
+                  </div>
+                </div>
+              ) : (
+                <p style={{ fontSize: 11, color: "var(--muted, #94a3b8)" }}>
+                  Add at least two points to calculate the cross product.
+                </p>
+              )}
+            </div>
+
+            <div className="inspector-section">
+              <span className="sidebar-group-label">DOT PRODUCT &amp; ANGLE</span>
+              {distancePointA && distancePointB ? (
+                <div style={{ marginTop: 8, padding: 11, borderRadius: 8, background: "rgba(168,85,247,0.07)", border: "1px solid rgba(168,85,247,0.22)", fontSize: 11, lineHeight: 1.75 }}>
+                  <strong style={{ display: "block", color: "#C4B5FD", marginBottom: 5 }}>
+                    {distancePointA.name} · {distancePointB.name}
+                  </strong>
+                  <div>A = ({distanceA!.x}, {distanceA!.y}, {distanceA!.z})</div>
+                  <div>B = ({distanceB!.x}, {distanceB!.y}, {distanceB!.z})</div>
+                  <div style={{ marginTop: 6, color: "#CBD5E1" }}>
+                    A · B = (Ax × Bx) + (Ay × By) + (Az × Bz)
+                  </div>
+                  <div>
+                    = ({distanceA!.x} × {distanceB!.x}) + ({distanceA!.y} × {distanceB!.y}) + ({distanceA!.z} × {distanceB!.z})
+                  </div>
+                  <strong style={{ display: "block", color: "#E9D5FF", marginTop: 3 }}>
+                    A · B = {Number(dotProductValue.toFixed(4))}
+                  </strong>
+                  <div style={{ marginTop: 8, color: "#CBD5E1" }}>
+                    cos θ = (A · B) / (|A| × |B|)
+                  </div>
+                  <div>|A| = {Number(magnitudeA.toFixed(4))} &nbsp; |B| = {Number(magnitudeB.toFixed(4))}</div>
+                  {angleDegrees === null ? (
+                    <strong style={{ display: "block", color: "#FCA5A5", marginTop: 5 }}>
+                      Angle is undefined when either vector has zero magnitude.
+                    </strong>
+                  ) : (
+                    <>
+                      <div>cos θ = {Number(cosineAngle!.toFixed(6))}</div>
+                      <strong style={{ display: "block", color: "#86EFAC", fontSize: 16, marginTop: 5 }}>
+                        θ = {Number(angleDegrees.toFixed(2))}°
+                      </strong>
+                      <div style={{ color: "#94A3B8", marginTop: 3 }}>
+                        {Math.abs(angleDegrees) < 0.005 ? "Vectors are parallel (same direction)." :
+                         Math.abs(angleDegrees - 90) < 0.005 ? "Vectors are perpendicular." :
+                         Math.abs(angleDegrees - 180) < 0.005 ? "Vectors are opposite (antiparallel)." :
+                         angleDegrees < 90 ? "The angle is acute." : "The angle is obtuse."}
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <p style={{ fontSize: 11, color: "var(--muted, #94a3b8)" }}>
+                  Add at least two points to calculate the dot product and angle.
+                </p>
+              )}
+            </div>
+
+            <div className="inspector-section">
+              <span className="sidebar-group-label">DISTANCE BETWEEN POINTS</span>
+              <label className="property-row"><span>Point A</span><select value={distanceAId} disabled={points.length < 2} onChange={(e) => { const id=e.target.value; setDistancePointAId(id); if (id===distanceBId) setDistancePointBId(points.find((point)=>point.id!==id)?.id ?? ""); }}>{points.map((point)=><option key={point.id} value={point.id}>{point.name}</option>)}</select></label>
+              <label className="property-row"><span>Point B</span><select value={distanceBId} disabled={points.length < 2} onChange={(e)=>setDistancePointBId(e.target.value)}>{points.filter((point)=>point.id!==distanceAId).map((point)=><option key={point.id} value={point.id}>{point.name}</option>)}</select></label>
+              {distancePointA && distancePointB ? (
+                <div style={{marginTop:10,padding:11,borderRadius:8,background:"rgba(59,130,246,0.08)",border:"1px solid rgba(59,130,246,0.22)",fontSize:11,lineHeight:1.7}}>
+                  <strong style={{display:"block",color:"#93C5FD",marginBottom:5}}>{distancePointA.name} to {distancePointB.name}</strong>
+                  <div style={{fontSize:18,fontWeight:700,color:"#E2E8F0",marginBottom:7}}>d = {Number(pointDistance.toFixed(4))}</div>
+                  <div>Δx = {distanceB!.x} − {distanceA!.x} = {dx}</div>
+                  <div>Δy = {distanceB!.y} − {distanceA!.y} = {dy}</div>
+                  <div>Δz = {distanceB!.z} − {distanceA!.z} = {dz}</div>
+                  <div style={{marginTop:6,color:"#CBD5E1"}}>d = √(({dx})² + ({dy})² + ({dz})²)</div>
+                  <div>d = √({dx*dx} + {dy*dy} + {dz*dz}) = {Number(pointDistance.toFixed(4))}</div>
+                </div>
+              ) : <p style={{fontSize:11,color:"var(--muted, #94a3b8)",lineHeight:1.5}}>Add at least two points to calculate the distance.</p>}
+            </div>
+
             <div className="inspector-section">
               <span className="sidebar-group-label">OCTANT DETECTOR</span>
 
@@ -575,7 +1187,7 @@ export default function Home() {
                     <br />
                     <span>
                       {octantMode === "auto"
-                        ? "Automatically detected from Point A."
+                        ? `Automatically detected from ${selectedPoint?.name ?? "selected point"}.`
                         : "Manually selected for teaching."}
                     </span>
                   </>
@@ -583,7 +1195,7 @@ export default function Home() {
                   <>
                     <strong style={{ display: "block", marginBottom: 3 }}>Point is on a coordinate plane</strong>
                     <span>
-                      At least one coordinate is zero, so Point A does not belong to any octant.
+                      At least one coordinate is zero, so the selected point does not belong to any octant.
                     </span>
                   </>
                 )}
@@ -592,8 +1204,8 @@ export default function Home() {
 
             <div className="inspector-section">
               <span className="sidebar-group-label">APPEARANCE</span>
-              <div className="property-row"><span>Visible</span><button className="visibility-button"><Eye size={14}/> On</button></div>
-              <div className="property-row"><span>Colour</span><input type="color" defaultValue="#3B82F6" aria-label="Object colour"/></div>
+              <div className="property-row"><span>Visible</span><button className="visibility-button" disabled={!selectedPoint} onClick={() => selectedPoint && updatePoint(selectedPoint.id, { visible: !selectedPoint.visible })}><Eye size={14}/> {selectedPoint?.visible ? "On" : "Off"}</button></div>
+              <div className="property-row"><span>Colour</span><input type="color" value={selectedPoint?.color ?? "#FACC15"} disabled={!selectedPoint} aria-label="Point colour" onChange={(e) => selectedPoint && updatePoint(selectedPoint.id, { color: e.target.value })}/></div>
               <div className="property-row"><span>Opacity</span><span className="property-value">100%</span></div>
             </div>
             <div className="inspector-section">
@@ -601,8 +1213,8 @@ export default function Home() {
               <div className="equation-box">x² + y² + z² = r²</div>
             </div>
             <div className="inspector-footer">
-              <button onClick={() => { resetPointA(); setSelectedObject("Point A"); }}><RotateCcw size={14}/> Reset</button>
-              <button onClick={() => setSelectedObject("None")}><Trash2 size={14}/> Clear</button>
+              <button onClick={() => { resetPoints(); setOctantMode("auto"); }}><RotateCcw size={14}/> Reset scene</button>
+              <button disabled={!selectedPoint || points.length <= 1} title={points.length <= 1 ? "Keep at least one point in the scene" : "Delete selected point"} onClick={() => selectedPoint && deletePoint(selectedPoint.id)}><Trash2 size={14}/> Delete point</button>
             </div>
           </aside>
         )}
