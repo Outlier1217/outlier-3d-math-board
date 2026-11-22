@@ -327,3 +327,127 @@ body:has(.calculus-page) {
   min-height: 100vh !important;
   overflow: visible !important;
 }
+
+
+/* Native fullscreen workspace viewport */
+.canvas-content:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
+  max-height: 100vh;
+  display: flex;
+  overflow: hidden;
+  background: #0b111b;
+  z-index: 99999;
+}
+
+.canvas-content:fullscreen .scene-preview {
+  flex: 1;
+  min-height: 100%;
+  width: 100%;
+}
+
+.canvas-content:fullscreen .three-d-canvas {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+}
+
+.canvas-content:fullscreen .scene-coordinate-label,
+.canvas-content:fullscreen .scene-hint {
+  z-index: 2;
+}
+
+
+/* Transparent annotation layer over the 3D mathematics scene */
+.scene-preview { isolation: isolate; }
+.annotation-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 5;
+  overflow: hidden;
+}
+.annotation-actions {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 8;
+  display: flex;
+  gap: 5px;
+  padding: 5px;
+  border: 1px solid #35465d;
+  border-radius: 9px;
+  background: rgba(12, 20, 32, .88);
+  backdrop-filter: blur(10px);
+}
+.annotation-actions button {
+  min-width: 30px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid #40516a;
+  border-radius: 6px;
+  background: #172337;
+  color: #e2e8f0;
+  cursor: pointer;
+  font-size: 12px;
+}
+.annotation-actions button:disabled {
+  opacity: .35;
+  cursor: not-allowed;
+}
+
+
+/* Independent 3D navigation and annotation modes */
+.interaction-mode-switch {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid #35465d;
+  border-radius: 10px;
+  background: rgba(12, 20, 32, .94);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 5px 20px rgba(0, 0, 0, .25);
+}
+
+.interaction-mode-switch button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #a9bad0;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+
+.interaction-mode-switch button:hover {
+  background: #23344b;
+  color: #fff;
+}
+
+.interaction-mode-switch button.interaction-mode-active {
+  background: #1d4b78;
+  border-color: #397db9;
+  color: #fff;
+}
+
+@media (max-width: 520px) {
+  .interaction-mode-switch {
+    top: 8px;
+  }
+  .interaction-mode-switch button {
+    padding: 0 9px;
+    font-size: 11px;
+  }
+}

@@ -1,9 +1,10 @@
 "use client";
 
-import { Canvas } from "@react-three/fiber";
-import { Grid, Line, OrbitControls, Text } from "@react-three/drei";
-import { Suspense } from "react";
+import { Canvas, useThree } from "@react-three/fiber";
+import { Billboard, Grid, Line, OrbitControls, Text } from "@react-three/drei";
+import { Suspense, useEffect } from "react";
 import * as THREE from "three";
+import GeometryObjectsLayer from "@/components/geometry-objects-layer";
 import {
   useSceneStore,
   type Octant,
@@ -62,32 +63,53 @@ function PointMarker({ point }: { point: ScenePoint }) {
 
   return (
     <group>
-      <mesh
-        position={position}
-        onClick={(event) => {
-          event.stopPropagation();
-          selectPoint(point.id);
-        }}
-      >
-        <sphereGeometry args={[isSelected ? 0.12 : 0.09, 24, 24]} />
-        <meshStandardMaterial
-          color={point.color}
-          emissive={point.color}
-          emissiveIntensity={isSelected ? 0.35 : 0.12}
-        />
-      </mesh>
+      {/* Camera-facing 2D point marker at the exact 3D coordinate */}
+      <Billboard position={position} follow>
+        <mesh
+          onClick={(event) => {
+            event.stopPropagation();
+            selectPoint(point.id);
+          }}
+        >
+          <circleGeometry args={[0.13, 32]} />
+          <meshBasicMaterial
+            color={point.color}
+            side={THREE.DoubleSide}
+            depthTest
+            depthWrite={false}
+          />
+        </mesh>
 
-      <Text
-        position={[x + 0.22, y + 0.15, z + 0.22]}
-        fontSize={0.27}
-        color={point.color}
-        anchorX="left"
-        anchorY="middle"
-        outlineWidth={0.015}
-        outlineColor="#111827"
-      >
-        {`${point.name.replace("Point ", "")} (${x}, ${y}, ${z})`}
-      </Text>
+        {isSelected && (
+          <mesh>
+            <ringGeometry args={[0.16, 0.205, 40]} />
+            <meshBasicMaterial
+              color="#FFFFFF"
+              side={THREE.DoubleSide}
+              transparent
+              opacity={0.95}
+              depthTest
+              depthWrite={false}
+            />
+          </mesh>
+        )}
+      </Billboard>
+
+      {/* Camera-facing coordinate label */}
+      <Billboard position={position} follow>
+        <Text
+          position={[0.22, 0.16, 0]}
+          fontSize={0.27}
+          color={point.color}
+          anchorX="left"
+          anchorY="middle"
+          outlineWidth={0.025}
+          outlineColor="#111827"
+          depthOffset={-2}
+        >
+          {`${point.name} (${x}, ${y}, ${z})`}
+        </Text>
+      </Billboard>
 
       <Line
         points={[[0, 0, 0], position]}
@@ -493,9 +515,20 @@ function PlaneGraphic({ equation }: { equation: { a: number; b: number; c: numbe
   );
 }
 
-function Scene({ distancePointIds, vectorOperation, planeEquation, lineGeometry, sphere, conic }: { distancePointIds: [string, string] | null; vectorOperation: "add" | "subtract"; planeEquation?: { a: number; b: number; c: number; d: number } | null; lineGeometry?: { point: [number, number, number]; direction: [number, number, number] } | null; sphere?: { center: [number, number, number]; radius: number } | null; conic?: { angle: number; offset: number; visible: boolean } }) {
+function Scene({ distancePointIds, vectorOperation, planeEquation, lineGeometry, sphere, conic, zoomScale, interactionMode }: { distancePointIds: [string, string] | null; vectorOperation: "add" | "subtract"; planeEquation?: { a: number; b: number; c: number; d: number } | null; lineGeometry?: { point: [number, number, number]; direction: [number, number, number] } | null; sphere?: { center: [number, number, number]; radius: number } | null; conic?: { angle: number; offset: number; visible: boolean }; zoomScale: number; interactionMode: "3d" | "pen" }) {
   const points = useSceneStore((state) => state.points);
   const selectedOctant = useSceneStore((state) => state.selectedOctant);
+
+  const camera = useThree((state) => state.camera);
+
+  useEffect(() => {
+    const initialDistance = Math.sqrt(9 * 9 + 10 * 10 + 8 * 8);
+    const distance = Math.min(30, Math.max(3, initialDistance / zoomScale));
+    camera.position.setLength(distance);
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+  }, [camera, zoomScale]);
+
 
   return (
     <>
@@ -547,15 +580,18 @@ function Scene({ distancePointIds, vectorOperation, planeEquation, lineGeometry,
         <PointMarker key={point.id} point={point} />
       ))}
       <DistanceSegment points={points} pointIds={distancePointIds} />
-      <VectorOperationGraphic points={points} pointIds={distancePointIds} operation={vectorOperation} />\n      <AngleBetweenVectorsGraphic points={points} pointIds={distancePointIds} />
+      <VectorOperationGraphic points={points} pointIds={distancePointIds} operation={vectorOperation} />
+      <AngleBetweenVectorsGraphic points={points} pointIds={distancePointIds} />
       <CrossProductGraphic points={points} pointIds={distancePointIds} />
       <ConicSectionsGraphic conic={conic ?? { angle: 20, offset: 0, visible: false }} />
       <SphereGraphic sphere={sphere ?? null} />
       <LineGeometryGraphic lineGeometry={lineGeometry ?? null} />
       <PlaneGraphic equation={planeEquation ?? null} />
       <ProjectionGraphic points={points} pointIds={distancePointIds} />
+      <GeometryObjectsLayer />
 
       <OrbitControls
+        enabled={interactionMode === "3d"}
         makeDefault
         target={[0, 0, 0]}
         enableDamping
@@ -567,7 +603,7 @@ function Scene({ distancePointIds, vectorOperation, planeEquation, lineGeometry,
   );
 }
 
-export default function ThreeDScene({ distancePointIds = null, vectorOperation = "add", planeEquation = null, lineGeometry = null, sphere = null, conic = null }: { distancePointIds?: [string,string] | null; vectorOperation?: "add" | "subtract"; planeEquation?: { a: number; b: number; c: number; d: number } | null; lineGeometry?: { point: [number, number, number]; direction: [number, number, number] } | null; sphere?: { center: [number, number, number]; radius: number } | null; conic?: { angle: number; offset: number; visible: boolean } | null }) {
+export default function ThreeDScene({ distancePointIds = null, vectorOperation = "add", planeEquation = null, lineGeometry = null, sphere = null, conic = null, zoomScale = 1, interactionMode = "3d" }: { distancePointIds?: [string,string] | null; vectorOperation?: "add" | "subtract"; planeEquation?: { a: number; b: number; c: number; d: number } | null; lineGeometry?: { point: [number, number, number]; direction: [number, number, number] } | null; sphere?: { center: [number, number, number]; radius: number } | null; conic?: { angle: number; offset: number; visible: boolean } | null; zoomScale?: number; interactionMode?: "3d" | "pen" }) {
   return (
     <Canvas
       className="three-d-canvas"
@@ -582,7 +618,7 @@ export default function ThreeDScene({ distancePointIds = null, vectorOperation =
       dpr={[1, 2]}
     >
       <Suspense fallback={null}>
-        <Scene distancePointIds={distancePointIds} vectorOperation={vectorOperation} planeEquation={planeEquation} lineGeometry={lineGeometry} sphere={sphere} conic={conic ?? undefined} />
+        <Scene distancePointIds={distancePointIds} vectorOperation={vectorOperation} planeEquation={planeEquation} lineGeometry={lineGeometry} sphere={sphere} conic={conic ?? undefined} zoomScale={zoomScale} interactionMode={interactionMode} />
       </Suspense>
     </Canvas>
   );

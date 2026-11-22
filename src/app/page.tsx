@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef} from "react";
 import ThreeDScene from "@/components/three-d-scene";
+import AnnotationLayer from "@/components/annotation-layer";
 import {
   useSceneStore,
   detectOctant,
   type Octant,
 } from "@/store/scene-store";
+import { useGeometryStore, type SceneGeometryKind } from "@/store/geometry-store";
 import {
   BookOpen, Box, Plus, Save, Undo2, Redo2, Upload,
   PanelLeftClose, PanelRightClose, MousePointer2,
@@ -116,11 +118,73 @@ function PDFPreview() {
   );
 }
 
-function ThreeDPreview({ distancePointIds, vectorOperation, planeEquation, lineGeometry, sphere, conic }: { distancePointIds: [string, string] | null; vectorOperation: "add" | "subtract"; planeEquation: { a: number; b: number; c: number; d: number } | null; lineGeometry: { point: [number, number, number]; direction: [number, number, number] } | null; sphere: { center: [number, number, number]; radius: number } | null; conic: { angle: number; offset: number; visible: boolean } }) {
+function ThreeDPreview({ distancePointIds, vectorOperation, planeEquation, lineGeometry, sphere, conic, zoomScale, activeTool, activeColor, penSize, interactionMode, setInteractionMode }: { distancePointIds: [string, string] | null; vectorOperation: "add" | "subtract"; planeEquation: { a: number; b: number; c: number; d: number } | null; lineGeometry: { point: [number, number, number]; direction: [number, number, number] } | null; sphere: { center: [number, number, number]; radius: number } | null; conic: { angle: number; offset: number; visible: boolean }; zoomScale: number; activeTool: Tool; activeColor: string; penSize: number; interactionMode: "3d" | "pen"; setInteractionMode: (mode: "3d" | "pen") => void }) {
   return (
     <div className="scene-preview">
       <div className="three-d-canvas">
-        <ThreeDScene distancePointIds={distancePointIds} vectorOperation={vectorOperation} planeEquation={planeEquation} lineGeometry={lineGeometry} sphere={sphere} conic={conic} />
+        <ThreeDScene distancePointIds={distancePointIds} vectorOperation={vectorOperation} planeEquation={planeEquation} lineGeometry={lineGeometry} sphere={sphere} conic={conic} zoomScale={zoomScale} interactionMode={interactionMode} />
+      </div>
+      <AnnotationLayer activeTool={activeTool} color={activeColor} size={penSize} interactionMode={interactionMode} />
+      <div
+        role="group"
+        aria-label="Viewport interaction mode"
+        style={{
+          position: "absolute",
+          top: "12px",
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 1000,
+          display: "flex",
+          alignItems: "center",
+          gap: "5px",
+          padding: "5px",
+          border: "1px solid #40516a",
+          borderRadius: "12px",
+          background: "rgba(12, 20, 32, 0.96)",
+          boxShadow: "0 6px 24px rgba(0,0,0,0.4)",
+          backdropFilter: "blur(12px)",
+        }}
+      >
+        <button
+          type="button"
+          aria-pressed={interactionMode === "3d"}
+          style={{
+            minWidth: "105px",
+            height: "36px",
+            padding: "0 12px",
+            border: interactionMode === "3d" ? "1px solid #60a5fa" : "1px solid transparent",
+            borderRadius: "8px",
+            background: interactionMode === "3d" ? "#1d4b78" : "transparent",
+            color: interactionMode === "3d" ? "#ffffff" : "#a9bad0",
+            fontSize: "12px",
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+          onClick={() => setInteractionMode("3d")}
+          title="Enable 3D rotation, pan and zoom"
+        >
+          ◉ 3D View
+        </button>
+        <button
+          type="button"
+          aria-pressed={interactionMode === "pen"}
+          style={{
+            minWidth: "105px",
+            height: "36px",
+            padding: "0 12px",
+            border: interactionMode === "pen" ? "1px solid #60a5fa" : "1px solid transparent",
+            borderRadius: "8px",
+            background: interactionMode === "pen" ? "#1d4b78" : "transparent",
+            color: interactionMode === "pen" ? "#ffffff" : "#a9bad0",
+            fontSize: "12px",
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+          onClick={() => setInteractionMode("pen")}
+          title="Enable drawing over the 3D scene"
+        >
+          ✎ Pen Mode
+        </button>
       </div>
       <div className="scene-coordinate-label">
         <Crosshair size={13} /> 3D Coordinate System
@@ -141,10 +205,21 @@ export default function Home() {
   const deletePoint = useSceneStore((state) => state.deletePoint);
   const selectPoint = useSceneStore((state) => state.selectPoint);
   const resetPoints = useSceneStore((state) => state.resetPoints);
+  const clearAllPoints = useSceneStore((state) => state.clearAllPoints);
   const selectedOctant = useSceneStore((state) => state.selectedOctant);
   const setSelectedOctant = useSceneStore((state) => state.setSelectedOctant);
   const selectedPoint = points.find((point) => point.id === selectedPointId) ?? null;
   const selectedPosition = selectedPoint?.position ?? { x: 0, y: 0, z: 0 };
+
+  const geometryObjects = useGeometryStore((state) => state.objects);
+  const selectedGeometryId = useGeometryStore((state) => state.selectedId);
+  const addGeometryObject = useGeometryStore((state) => state.addObject);
+  const updateGeometryObject = useGeometryStore((state) => state.updateObject);
+  const deleteGeometryObject = useGeometryStore((state) => state.deleteObject);
+  const duplicateGeometryObject = useGeometryStore((state) => state.duplicateObject);
+  const selectGeometryObject = useGeometryStore((state) => state.selectObject);
+  const clearAllGeometry = useGeometryStore((state) => state.clearObjects);
+
 
   // Distance tool: defaults to the first two available points.
   const [distancePointAId, setDistancePointAId] = useState("");
@@ -344,6 +419,9 @@ export default function Home() {
 
   const [activeTab, setActiveTab] = useState<Tab>("3d");
   const [activeTool, setActiveTool] = useState<Tool>("select");
+  const [interactionMode, setInteractionMode] = useState<"3d" | "pen">("3d");
+  const [zoomLevel, setZoomLevel] = useState(100);
+  const canvasContentRef = useRef<HTMLDivElement>(null);
   const [activeColor, setActiveColor] = useState("#FACC15");
   const [penSize, setPenSize] = useState(3);
   const [leftOpen, setLeftOpen] = useState(true);
@@ -578,15 +656,27 @@ export default function Home() {
               <span className="canvas-current">{splitView ? "Split View" : tabItems.find((t) => t.id === activeTab)?.label}</span>
             </div>
             <div className="canvas-actions">
-              <IconButton icon={ZoomOut} label="Zoom out" />
-              <span className="zoom-level">100%</span>
-              <IconButton icon={ZoomIn} label="Zoom in" />
-              <IconButton icon={RotateCcw} label="Reset view" />
-              <IconButton icon={Maximize2} label="Fullscreen" />
+              <IconButton icon={ZoomOut} label="Zoom out" onClick={() => setZoomLevel((level) => Math.max(25, level - 10))} disabled={zoomLevel <= 25} />
+              <span className="zoom-level">{zoomLevel}%</span>
+              <IconButton icon={ZoomIn} label="Zoom in" onClick={() => setZoomLevel((level) => Math.min(300, level + 10))} disabled={zoomLevel >= 300} />
+              <IconButton icon={RotateCcw} label="Reset view" onClick={() => setZoomLevel(100)} />
+              <IconButton
+                icon={Maximize2}
+                label="Fullscreen"
+                onClick={() => {
+                  const target = canvasContentRef.current;
+                  if (!target) return;
+                  if (document.fullscreenElement) {
+                    void document.exitFullscreen();
+                  } else {
+                    void target.requestFullscreen();
+                  }
+                }}
+              />
             </div>
           </div>
 
-          <div className={`canvas-content ${splitView ? "split-canvas" : ""}`}>
+          <div ref={canvasContentRef} className={`canvas-content ${splitView ? "split-canvas" : ""}`}>
             {(splitView || activeTab === "pdf") && (
               <section className="canvas-pane pdf-pane">
                 <div className="pane-title"><BookOpen size={14} /> PDF READER <span>•</span> {pdfName}</div>
@@ -617,30 +707,200 @@ export default function Home() {
                       <p>Handwriting canvas engine will be connected next.</p>
                     </div>
                   </div>
-                ) : <ThreeDPreview distancePointIds={distanceAId && distanceBId ? [distanceAId, distanceBId] : null} vectorOperation={vectorOperation} planeEquation={planeIsValid && (planeMode === "coefficients" || (planeHasThreePoints && threePointNormalMagnitude > 1e-8)) ? activePlane : null} lineGeometry={lineGeometry} sphere={sphereGeometry} conic={{ angle: conicAngle, offset: conicOffset, visible: conicVisible }} />}
+                ) : <ThreeDPreview distancePointIds={distanceAId && distanceBId ? [distanceAId, distanceBId] : null} vectorOperation={vectorOperation} planeEquation={planeIsValid && (planeMode === "coefficients" || (planeHasThreePoints && threePointNormalMagnitude > 1e-8)) ? activePlane : null} lineGeometry={lineGeometry} sphere={sphereGeometry} conic={{ angle: conicAngle, offset: conicOffset, visible: conicVisible }} zoomScale={zoomLevel / 100} activeTool={activeTool} activeColor={activeColor} penSize={penSize} interactionMode={interactionMode} setInteractionMode={setInteractionMode} />}
               </section>
             )}
           </div>
 
           <div className="bottom-explorer">
-            <div className="explorer-title"><Layers size={15}/> OBJECT EXPLORER</div>
-            {points.map((point) => (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, minWidth: 0 }}>
+              <div className="explorer-title"><Layers size={15}/> OBJECT EXPLORER</div>
               <button
+                type="button"
+                title="Remove all points and geometry from the scene"
+                onClick={() => {
+                  const confirmed = window.confirm(
+                    "Clear the entire 3D scene? All points and geometry objects will be removed."
+                  );
+                  if (!confirmed) return;
+
+                  clearAllPoints();
+                  clearAllGeometry();
+
+                  // Hide and reset legacy mathematical previews.
+                  setConicVisible(false);
+                  setConicAngle(20);
+                  setConicOffset(0);
+
+                  setSphereVisible(false);
+                  setSphereCenter({ x: 0, y: 0, z: 0 });
+                  setSphereRadius(3);
+                  setSphereTestPointId("");
+
+                  setLinePointAId("");
+                  setLinePointBId("");
+                  setLineTestPointId("");
+
+                  setPlaneMode("coefficients");
+                  setPlaneCoefficients({ a: 0, b: 0, c: 0, d: 0 });
+                  setPlanePointIds(["", "", ""]);
+
+                  setSelectedOctant(null);
+                }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "6px 10px",
+                  border: "1px solid rgba(248,113,113,0.35)",
+                  borderRadius: 7,
+                  background: "rgba(248,113,113,0.10)",
+                  color: "#F87171",
+                  cursor: "pointer",
+                  fontSize: 10,
+                  fontWeight: 600,
+                  whiteSpace: "nowrap"
+                }}
+              >
+                <Trash2 size={12}/> Clear All
+              </button>
+            </div>
+            {points.map((point) => (
+              <div
                 key={point.id}
                 className={`explorer-item ${selectedPointId === point.id ? "explorer-selected" : ""}`}
-                onClick={() => selectPoint(point.id)}
-                title={`${point.name} (${point.position.x}, ${point.position.y}, ${point.position.z})`}
+                style={{ display: "flex", alignItems: "center", gap: 7 }}
               >
-                <Circle size={13} fill={point.color} color={point.color}/>
-                {point.name}
-                <span className="object-visible" onClick={(event) => { event.stopPropagation(); updatePoint(point.id, { visible: !point.visible }); }}>
+                <button
+                  type="button"
+                  onClick={() => selectPoint(point.id)}
+                  title={`${point.name} (${point.position.x}, ${point.position.y}, ${point.position.z})`}
+                  style={{ display: "flex", alignItems: "center", gap: 7, flex: 1, minWidth: 0, border: 0, background: "transparent", color: "inherit", cursor: "pointer", textAlign: "left" }}
+                >
+                  <Circle size={13} fill={point.color} color={point.color}/>
+                  {point.name}
+                </button>
+                <button
+                  type="button"
+                  title={point.visible ? "Hide point" : "Show point"}
+                  aria-label={point.visible ? `Hide ${point.name}` : `Show ${point.name}`}
+                  onClick={() => updatePoint(point.id, { visible: !point.visible })}
+                  style={{ border: 0, background: "transparent", color: "inherit", cursor: "pointer" }}
+                >
                   <Eye size={12} style={{ opacity: point.visible ? 1 : 0.35 }}/>
-                </span>
-              </button>
+                </button>
+                <button
+                  type="button"
+                  title={`Delete ${point.name}`}
+                  aria-label={`Delete ${point.name}`}
+                  onClick={() => deletePoint(point.id)}
+                  style={{ border: 0, background: "transparent", color: "#F87171", cursor: "pointer" }}
+                >
+                  <Trash2 size={12}/>
+                </button>
+              </div>
             ))}
+
+            {geometryObjects.map((object) => (
+              <div
+                key={object.id}
+                className={`explorer-item ${selectedGeometryId === object.id ? "explorer-selected" : ""}`}
+                style={{ display: "flex", alignItems: "center", gap: 6 }}
+              >
+                <button
+                  type="button"
+                  onClick={() => selectGeometryObject(object.id)}
+                  title={`Select ${object.name}`}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    flex: 1,
+                    minWidth: 0,
+                    border: 0,
+                    background: "transparent",
+                    color: "inherit",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <Circle size={13} color={object.color} />
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {object.name}
+                  </span>
+                  <small style={{ opacity: 0.55 }}>{object.kind}</small>
+                </button>
+
+                <button
+                  type="button"
+                  title={object.visible ? "Hide object" : "Show object"}
+                  aria-label={object.visible ? `Hide ${object.name}` : `Show ${object.name}`}
+                  onClick={() => updateGeometryObject(object.id, { visible: !object.visible })}
+                  style={{ border: 0, background: "transparent", color: "inherit", cursor: "pointer" }}
+                >
+                  <Eye size={12} style={{ opacity: object.visible ? 1 : 0.35 }} />
+                </button>
+
+                <button
+                  type="button"
+                  title="Rename object"
+                  aria-label={`Rename ${object.name}`}
+                  onClick={() => {
+                    const name = window.prompt("Rename geometry object:", object.name);
+                    if (name?.trim()) updateGeometryObject(object.id, { name: name.trim() });
+                  }}
+                  style={{ border: 0, background: "transparent", color: "inherit", cursor: "pointer", fontSize: 10 }}
+                >
+                  Rename
+                </button>
+
+                <button
+                  type="button"
+                  title="Duplicate object"
+                  aria-label={`Duplicate ${object.name}`}
+                  onClick={() => duplicateGeometryObject(object.id)}
+                  style={{ border: 0, background: "transparent", color: "inherit", cursor: "pointer", fontSize: 10 }}
+                >
+                  Copy
+                </button>
+
+                <button
+                  type="button"
+                  title="Delete object"
+                  aria-label={`Delete ${object.name}`}
+                  onClick={() => deleteGeometryObject(object.id)}
+                  style={{ border: 0, background: "transparent", color: "#F87171", cursor: "pointer" }}
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            ))}
+
+            <select
+              className="explorer-add"
+              aria-label="Add geometry object"
+              value=""
+              onChange={(event) => {
+                if (event.target.value) {
+                  addGeometryObject(event.target.value as SceneGeometryKind);
+                  event.target.value = "";
+                }
+              }}
+              style={{ cursor: "pointer" }}
+            >
+              <option value="" disabled>+ Add Geometry</option>
+              <option value="circle">Circle</option>
+              <option value="ellipse">Ellipse</option>
+              <option value="parabola">Parabola</option>
+              <option value="hyperbola">Hyperbola</option>
+              <option value="sphere">Sphere</option>
+              <option value="line">Line</option>
+              <option value="plane">Plane</option>
+            </select>
+
             <button className="explorer-add" onClick={addPoint}><Plus size={14}/> Add Point</button>
             <div className="explorer-spacer"/>
-            <span className="scene-count">{points.length} POINT{points.length === 1 ? "" : "S"}</span>
+            <span className="scene-count">{points.length} POINT{points.length === 1 ? "" : "S"} · {geometryObjects.length} GEOMETRY</span>
           </div>
         </section>
 

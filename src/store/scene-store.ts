@@ -60,6 +60,7 @@ interface SceneState {
   deletePoint: (id: string) => void;
   selectPoint: (id: string | null) => void;
   resetPoints: () => void;
+  clearAllPoints: () => void;
   setPointA: (coordinates: Partial<Point3D>) => void;
   resetPointA: () => void;
   setSelectedOctant: (octant: Octant | null) => void;
@@ -125,6 +126,14 @@ export const useSceneStore = create<SceneState>((set, get) => ({
     }),
 
   selectPoint: (id) => set({ selectedPointId: id }),
+
+  clearAllPoints: () =>
+    set({
+      points: [],
+      pointA: { x: 0, y: 0, z: 0 },
+      selectedPointId: null,
+      selectedOctant: null,
+    }),
 
   resetPoints: () =>
     set({
