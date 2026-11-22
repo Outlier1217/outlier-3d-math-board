@@ -73,6 +73,160 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .brand-name b { color: #60a5fa; }
 .brand-subtitle { color: var(--muted); font-size: 8px; letter-spacing: 1.7px; }
 .topbar-center { display: flex; align-items: center; gap: 14px; }
+
+/* Mathematics modules navigation */
+.module-menu {
+  position: relative;
+  flex-shrink: 0;
+  z-index: 1100;
+}
+
+.module-menu summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  list-style: none;
+  cursor: pointer;
+  padding: 9px 11px;
+  border: 1px solid #34445a;
+  border-radius: 8px;
+  background: #172437;
+  color: #c8d9ef;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.module-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.module-menu summary:hover,
+.module-menu[open] summary {
+  background: #20344d;
+  border-color: #4775a5;
+  color: #ffffff;
+}
+
+.module-menu-chevron {
+  transition: transform 0.15s;
+}
+
+.module-menu[open] .module-menu-chevron {
+  transform: rotate(180deg);
+}
+
+
+/* Module menu visibility and floating panel fix */
+
+/* Keep the navigation above workspace content */
+.topbar {
+  position: relative;
+  z-index: 50;
+  overflow: visible;
+}
+
+/* Critical: hide dropdown when details is closed */
+.module-menu:not([open]) > .module-menu-dropdown {
+  display: none;
+}
+
+/* Floating panel should appear above the workspace */
+.module-menu[open] > .module-menu-dropdown {
+  display: flex;
+  animation: module-menu-enter 160ms ease-out;
+  transform-origin: top left;
+}
+
+@keyframes module-menu-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.module-menu summary {
+  user-select: none;
+}
+
+.module-menu summary:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .module-menu[open] > .module-menu-dropdown {
+    animation: none;
+  }
+}
+
+.module-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 9px);
+  left: 0;
+  width: 290px;
+  padding: 8px;
+  border: 1px solid #34445a;
+  border-radius: 11px;
+  background: #111d2c;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  z-index: 1200;
+}
+
+.module-menu-heading {
+  padding: 8px 9px 7px;
+  color: #8296b1;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 1.1px;
+}
+
+.module-menu-link {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 9px;
+  border-radius: 7px;
+  color: #aebfd4;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.module-menu-link:hover {
+  background: #20344d;
+  color: #ffffff;
+}
+
+.module-menu-link > svg {
+  flex-shrink: 0;
+  color: #7db7f5;
+}
+
+.module-menu-link span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.module-menu-link strong {
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.module-menu-link small {
+  color: #8294aa;
+  font-size: 9px;
+}
+
 .lesson-name { font-size: 12px; font-weight: 600; color: #dce6f4; }
 .saved-indicator { color: #8997a9; font-size: 10px; gap: 6px; }
 .saved-indicator span, .status-online {
@@ -256,6 +410,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 @media (max-width: 760px) {
   .topbar { padding: 0 9px; }
   .brand-area { min-width: auto; }
+  .module-menu summary { padding: 8px; gap: 5px; font-size: 10px; }
+  .module-menu-dropdown { width: min(290px, calc(100vw - 18px)); }
+
   .brand-subtitle, .topbar-center, .top-action, .topbar-actions .icon-button { display: none; }
   .topbar-actions { margin-left: auto; }
   .workspace-tabs { padding: 0 5px; }

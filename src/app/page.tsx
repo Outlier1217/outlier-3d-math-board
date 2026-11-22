@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef} from "react";
+import Link from "next/link";
 import ThreeDScene from "@/components/three-d-scene";
 import AnnotationLayer from "@/components/annotation-layer";
 import {
@@ -17,8 +18,7 @@ import {
   Circle, Square, Eye, Trash2, ZoomIn, ZoomOut,
   RotateCcw, Maximize2, SplitSquareHorizontal,
   FileText, MoreHorizontal, Check, Sparkles,
-  Layers, Crosshair, Palette, ChevronDown, X
-} from "lucide-react";
+  Layers, Crosshair, Palette, ChevronDown, X, EyeOff} from "lucide-react";
 
 type Tab = "pdf" | "3d" | "2d";
 type Tool = "select" | "pen" | "eraser" | "highlighter" | "hand" | "line" | "arrow" | "shapes" | "text" | "ruler";
@@ -118,11 +118,17 @@ function PDFPreview() {
   );
 }
 
-function ThreeDPreview({ distancePointIds, vectorOperation, planeEquation, lineGeometry, sphere, conic, zoomScale, activeTool, activeColor, penSize, interactionMode, setInteractionMode }: { distancePointIds: [string, string] | null; vectorOperation: "add" | "subtract"; planeEquation: { a: number; b: number; c: number; d: number } | null; lineGeometry: { point: [number, number, number]; direction: [number, number, number] } | null; sphere: { center: [number, number, number]; radius: number } | null; conic: { angle: number; offset: number; visible: boolean }; zoomScale: number; activeTool: Tool; activeColor: string; penSize: number; interactionMode: "3d" | "pen"; setInteractionMode: (mode: "3d" | "pen") => void }) {
+function ThreeDPreview({ distancePointIds, vectorOperation, planeEquation, lineGeometry, sphere, conic, zoomScale, activeTool, activeColor, penSize, interactionMode, setInteractionMode, visualVisibility }: { distancePointIds: [string, string] | null; vectorOperation: "add" | "subtract"; planeEquation: { a: number; b: number; c: number; d: number } | null; lineGeometry: { point: [number, number, number]; direction: [number, number, number] } | null; sphere: { center: [number, number, number]; radius: number } | null; conic: { angle: number; offset: number; visible: boolean }; zoomScale: number; activeTool: Tool; activeColor: string; penSize: number; interactionMode: "3d" | "pen"; setInteractionMode: (mode: "3d" | "pen") => void;
+  visualVisibility: {
+    vectorOperations: boolean; angle: boolean; crossProduct: boolean;
+    projection: boolean; distance: boolean; conic: boolean;
+    sphere: boolean; line: boolean; plane: boolean; octant: boolean;
+  };
+}) {
   return (
     <div className="scene-preview">
       <div className="three-d-canvas">
-        <ThreeDScene distancePointIds={distancePointIds} vectorOperation={vectorOperation} planeEquation={planeEquation} lineGeometry={lineGeometry} sphere={sphere} conic={conic} zoomScale={zoomScale} interactionMode={interactionMode} />
+        <ThreeDScene distancePointIds={distancePointIds} vectorOperation={vectorOperation} planeEquation={planeEquation} lineGeometry={lineGeometry} sphere={sphere} conic={conic} zoomScale={zoomScale} interactionMode={interactionMode} visualVisibility={visualVisibility} />
       </div>
       <AnnotationLayer activeTool={activeTool} color={activeColor} size={penSize} interactionMode={interactionMode} />
       <div
@@ -420,6 +426,27 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>("3d");
   const [activeTool, setActiveTool] = useState<Tool>("select");
   const [interactionMode, setInteractionMode] = useState<"3d" | "pen">("3d");
+
+  const [visualVisibility, setVisualVisibility] = useState({
+    vectorOperations: true,
+    angle: true,
+    crossProduct: true,
+    projection: true,
+    distance: true,
+    conic: true,
+    sphere: true,
+    line: true,
+    plane: true,
+    octant: true,
+  });
+
+  const toggleVisualization = (key: keyof typeof visualVisibility) => {
+    setVisualVisibility((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
+  };
+
   const [zoomLevel, setZoomLevel] = useState(100);
   const canvasContentRef = useRef<HTMLDivElement>(null);
   const [activeColor, setActiveColor] = useState("#FACC15");
@@ -469,6 +496,52 @@ export default function Home() {
             <span className="brand-subtitle">MATHEMATICS STUDIO</span>
           </div>
         </div>
+
+        <details className="module-menu">
+          <summary aria-label="Open mathematics modules">
+            <BookOpen size={16} />
+            <span>Math Modules</span>
+            <ChevronDown className="module-menu-chevron" size={14} />
+          </summary>
+          <div className="module-menu-dropdown">
+            <div className="module-menu-heading">MATHEMATICS WORKSPACE</div>
+            <Link href="/" className="module-menu-link">
+              <Box size={16} />
+              <span>
+                <strong>3D Mathematics Board</strong>
+                <small>Vectors, points, planes & geometry</small>
+              </span>
+            </Link>
+            <Link href="/calculus" className="module-menu-link">
+              <BookOpen size={16} />
+              <span>
+                <strong>Calculus</strong>
+                <small>Calculus visualizations</small>
+              </span>
+            </Link>
+            <Link href="/calculus/gradient" className="module-menu-link">
+              <Crosshair size={16} />
+              <span>
+                <strong>Gradient & Directional Derivatives</strong>
+                <small>Gradient field experiments</small>
+              </span>
+            </Link>
+            <Link href="/calculus/curl-divergence" className="module-menu-link">
+              <RotateCcw size={16} />
+              <span>
+                <strong>Curl & Divergence</strong>
+                <small>Vector calculus experiments</small>
+              </span>
+            </Link>
+            <Link href="/calculus/double-integrals" className="module-menu-link">
+              <Layers size={16} />
+              <span>
+                <strong>Double Integrals</strong>
+                <small>Multivariable integration</small>
+              </span>
+            </Link>
+          </div>
+        </details>
 
         <div className="topbar-center">
           <span className="lesson-name">Untitled Lesson</span>
@@ -707,7 +780,7 @@ export default function Home() {
                       <p>Handwriting canvas engine will be connected next.</p>
                     </div>
                   </div>
-                ) : <ThreeDPreview distancePointIds={distanceAId && distanceBId ? [distanceAId, distanceBId] : null} vectorOperation={vectorOperation} planeEquation={planeIsValid && (planeMode === "coefficients" || (planeHasThreePoints && threePointNormalMagnitude > 1e-8)) ? activePlane : null} lineGeometry={lineGeometry} sphere={sphereGeometry} conic={{ angle: conicAngle, offset: conicOffset, visible: conicVisible }} zoomScale={zoomLevel / 100} activeTool={activeTool} activeColor={activeColor} penSize={penSize} interactionMode={interactionMode} setInteractionMode={setInteractionMode} />}
+                ) : <ThreeDPreview distancePointIds={distanceAId && distanceBId ? [distanceAId, distanceBId] : null} vectorOperation={vectorOperation} planeEquation={planeIsValid && (planeMode === "coefficients" || (planeHasThreePoints && threePointNormalMagnitude > 1e-8)) ? activePlane : null} lineGeometry={lineGeometry} sphere={sphereGeometry} conic={{ angle: conicAngle, offset: conicOffset, visible: conicVisible }} zoomScale={zoomLevel / 100} activeTool={activeTool} activeColor={activeColor} penSize={penSize} interactionMode={interactionMode} setInteractionMode={setInteractionMode} visualVisibility={visualVisibility} />}
               </section>
             )}
           </div>
@@ -982,7 +1055,30 @@ export default function Home() {
             </div>
 
             <div className="inspector-section">
-              <span className="sidebar-group-label">VECTOR OPERATIONS</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span className="sidebar-group-label">VECTOR OPERATIONS</span>
+                <button
+                  type="button"
+                  title={visualVisibility.vectorOperations ? "Hide visualization" : "Show visualization"}
+                  aria-label={visualVisibility.vectorOperations ? "Hide VECTOR OPERATIONS visualization" : "Show VECTOR OPERATIONS visualization"}
+                  onClick={() => toggleVisualization("vectorOperations")}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 28,
+                    height: 26,
+                    flexShrink: 0,
+                    borderRadius: 6,
+                    border: "1px solid var(--border, #30303a)",
+                    background: visualVisibility.vectorOperations ? "rgba(34,197,94,0.10)" : "rgba(148,163,184,0.10)",
+                    color: visualVisibility.vectorOperations ? "#86EFAC" : "#94A3B8",
+                    cursor: "pointer"
+                  }}
+                >
+                  {visualVisibility.vectorOperations ? <Eye size={14} /> : <EyeOff size={14} />}
+                </button>
+              </div>
               <div style={{ display: "flex", gap: 6, marginTop: 8, marginBottom: 10 }}>
                 <button type="button" onClick={() => setVectorOperation("add")} style={{ flex: 1, padding: "8px 6px", borderRadius: 7, border: "1px solid", borderColor: vectorOperation === "add" ? "#22C55E" : "var(--border, #30303a)", background: vectorOperation === "add" ? "rgba(34,197,94,0.14)" : "transparent", color: vectorOperation === "add" ? "#86EFAC" : "inherit", cursor: "pointer", fontSize: 11 }}>A + B</button>
                 <button type="button" onClick={() => setVectorOperation("subtract")} style={{ flex: 1, padding: "8px 6px", borderRadius: 7, border: "1px solid", borderColor: vectorOperation === "subtract" ? "#A78BFA" : "var(--border, #30303a)", background: vectorOperation === "subtract" ? "rgba(167,139,250,0.14)" : "transparent", color: vectorOperation === "subtract" ? "#C4B5FD" : "inherit", cursor: "pointer", fontSize: 11 }}>A − B</button>
@@ -1001,7 +1097,30 @@ export default function Home() {
             </div>
 
             <div className="inspector-section">
-              <span className="sidebar-group-label">SCALAR &amp; VECTOR PROJECTION</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span className="sidebar-group-label">SCALAR &amp; VECTOR PROJECTION</span>
+                <button
+                  type="button"
+                  title={visualVisibility.projection ? "Hide visualization" : "Show visualization"}
+                  aria-label={visualVisibility.projection ? "Hide SCALAR &amp; VECTOR PROJECTION visualization" : "Show SCALAR &amp; VECTOR PROJECTION visualization"}
+                  onClick={() => toggleVisualization("projection")}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 28,
+                    height: 26,
+                    flexShrink: 0,
+                    borderRadius: 6,
+                    border: "1px solid var(--border, #30303a)",
+                    background: visualVisibility.projection ? "rgba(34,197,94,0.10)" : "rgba(148,163,184,0.10)",
+                    color: visualVisibility.projection ? "#86EFAC" : "#94A3B8",
+                    cursor: "pointer"
+                  }}
+                >
+                  {visualVisibility.projection ? <Eye size={14} /> : <EyeOff size={14} />}
+                </button>
+              </div>
               {distancePointA && distancePointB ? (
                 <div style={{ marginTop: 8, padding: 11, borderRadius: 8, background: "rgba(217,70,239,0.07)", border: "1px solid rgba(217,70,239,0.22)", fontSize: 11, lineHeight: 1.75 }}>
                   <strong style={{ display: "block", color: "#F0ABFC", marginBottom: 5 }}>
@@ -1050,7 +1169,30 @@ export default function Home() {
             </div>
 
             <div className="inspector-section">
-              <span className="sidebar-group-label">3D CONIC SECTIONS</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span className="sidebar-group-label">3D CONIC SECTIONS</span>
+                <button
+                  type="button"
+                  title={visualVisibility.conic ? "Hide visualization" : "Show visualization"}
+                  aria-label={visualVisibility.conic ? "Hide 3D CONIC SECTIONS visualization" : "Show 3D CONIC SECTIONS visualization"}
+                  onClick={() => toggleVisualization("conic")}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 28,
+                    height: 26,
+                    flexShrink: 0,
+                    borderRadius: 6,
+                    border: "1px solid var(--border, #30303a)",
+                    background: visualVisibility.conic ? "rgba(34,197,94,0.10)" : "rgba(148,163,184,0.10)",
+                    color: visualVisibility.conic ? "#86EFAC" : "#94A3B8",
+                    cursor: "pointer"
+                  }}
+                >
+                  {visualVisibility.conic ? <Eye size={14} /> : <EyeOff size={14} />}
+                </button>
+              </div>
               <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 10, color: "#CBD5E1", marginTop: 8, marginBottom: 8 }}>
                 <input type="checkbox" checked={conicVisible} onChange={(event) => setConicVisible(event.target.checked)} />
                 Show cone and cutting plane
@@ -1083,7 +1225,30 @@ export default function Home() {
             </div>
 
             <div className="inspector-section">
-              <span className="sidebar-group-label">3D SPHERE GEOMETRY</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span className="sidebar-group-label">3D SPHERE GEOMETRY</span>
+                <button
+                  type="button"
+                  title={visualVisibility.sphere ? "Hide visualization" : "Show visualization"}
+                  aria-label={visualVisibility.sphere ? "Hide 3D SPHERE GEOMETRY visualization" : "Show 3D SPHERE GEOMETRY visualization"}
+                  onClick={() => toggleVisualization("sphere")}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 28,
+                    height: 26,
+                    flexShrink: 0,
+                    borderRadius: 6,
+                    border: "1px solid var(--border, #30303a)",
+                    background: visualVisibility.sphere ? "rgba(34,197,94,0.10)" : "rgba(148,163,184,0.10)",
+                    color: visualVisibility.sphere ? "#86EFAC" : "#94A3B8",
+                    cursor: "pointer"
+                  }}
+                >
+                  {visualVisibility.sphere ? <Eye size={14} /> : <EyeOff size={14} />}
+                </button>
+              </div>
               <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 10, color: "#CBD5E1", marginTop: 8, marginBottom: 8 }}>
                 <input type="checkbox" checked={sphereVisible} onChange={(event) => setSphereVisible(event.target.checked)} />
                 Show sphere
@@ -1133,7 +1298,30 @@ export default function Home() {
             </div>
 
             <div className="inspector-section">
-              <span className="sidebar-group-label">3D LINE GEOMETRY</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span className="sidebar-group-label">3D LINE GEOMETRY</span>
+                <button
+                  type="button"
+                  title={visualVisibility.line ? "Hide visualization" : "Show visualization"}
+                  aria-label={visualVisibility.line ? "Hide 3D LINE GEOMETRY visualization" : "Show 3D LINE GEOMETRY visualization"}
+                  onClick={() => toggleVisualization("line")}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 28,
+                    height: 26,
+                    flexShrink: 0,
+                    borderRadius: 6,
+                    border: "1px solid var(--border, #30303a)",
+                    background: visualVisibility.line ? "rgba(34,197,94,0.10)" : "rgba(148,163,184,0.10)",
+                    color: visualVisibility.line ? "#86EFAC" : "#94A3B8",
+                    cursor: "pointer"
+                  }}
+                >
+                  {visualVisibility.line ? <Eye size={14} /> : <EyeOff size={14} />}
+                </button>
+              </div>
               <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 7, marginBottom: 6 }}>Select two distinct points to define a line.</div>
               {(["A", "B"] as const).map((label, index) => {
                 const value = index === 0 ? lineAId : lineBId;
@@ -1189,7 +1377,30 @@ export default function Home() {
             </div>
 
             <div className="inspector-section">
-              <span className="sidebar-group-label">3D PLANE GEOMETRY</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span className="sidebar-group-label">3D PLANE GEOMETRY</span>
+                <button
+                  type="button"
+                  title={visualVisibility.plane ? "Hide visualization" : "Show visualization"}
+                  aria-label={visualVisibility.plane ? "Hide 3D PLANE GEOMETRY visualization" : "Show 3D PLANE GEOMETRY visualization"}
+                  onClick={() => toggleVisualization("plane")}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 28,
+                    height: 26,
+                    flexShrink: 0,
+                    borderRadius: 6,
+                    border: "1px solid var(--border, #30303a)",
+                    background: visualVisibility.plane ? "rgba(34,197,94,0.10)" : "rgba(148,163,184,0.10)",
+                    color: visualVisibility.plane ? "#86EFAC" : "#94A3B8",
+                    cursor: "pointer"
+                  }}
+                >
+                  {visualVisibility.plane ? <Eye size={14} /> : <EyeOff size={14} />}
+                </button>
+              </div>
               <div style={{ display: "flex", gap: 6, marginTop: 8, marginBottom: 10 }}>
                 <button type="button" onClick={() => setPlaneMode("coefficients")} style={{ flex: 1, padding: "7px 5px", borderRadius: 7, border: "1px solid", borderColor: planeMode === "coefficients" ? "#38BDF8" : "var(--border, #30303a)", background: planeMode === "coefficients" ? "rgba(56,189,248,0.13)" : "transparent", color: planeMode === "coefficients" ? "#7DD3FC" : "inherit", cursor: "pointer", fontSize: 10 }}>Equation</button>
                 <button type="button" onClick={() => setPlaneMode("three-points")} style={{ flex: 1, padding: "7px 5px", borderRadius: 7, border: "1px solid", borderColor: planeMode === "three-points" ? "#38BDF8" : "var(--border, #30303a)", background: planeMode === "three-points" ? "rgba(56,189,248,0.13)" : "transparent", color: planeMode === "three-points" ? "#7DD3FC" : "inherit", cursor: "pointer", fontSize: 10 }}>3 Points</button>
@@ -1252,7 +1463,30 @@ export default function Home() {
             </div>
 
             <div className="inspector-section">
-              <span className="sidebar-group-label">CROSS PRODUCT</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span className="sidebar-group-label">CROSS PRODUCT</span>
+                <button
+                  type="button"
+                  title={visualVisibility.crossProduct ? "Hide visualization" : "Show visualization"}
+                  aria-label={visualVisibility.crossProduct ? "Hide CROSS PRODUCT visualization" : "Show CROSS PRODUCT visualization"}
+                  onClick={() => toggleVisualization("crossProduct")}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 28,
+                    height: 26,
+                    flexShrink: 0,
+                    borderRadius: 6,
+                    border: "1px solid var(--border, #30303a)",
+                    background: visualVisibility.crossProduct ? "rgba(34,197,94,0.10)" : "rgba(148,163,184,0.10)",
+                    color: visualVisibility.crossProduct ? "#86EFAC" : "#94A3B8",
+                    cursor: "pointer"
+                  }}
+                >
+                  {visualVisibility.crossProduct ? <Eye size={14} /> : <EyeOff size={14} />}
+                </button>
+              </div>
               {distancePointA && distancePointB && crossProduct ? (
                 <div style={{ marginTop: 8, padding: 11, borderRadius: 8, background: "rgba(14,165,233,0.07)", border: "1px solid rgba(14,165,233,0.22)", fontSize: 11, lineHeight: 1.75 }}>
                   <strong style={{ display: "block", color: "#7DD3FC", marginBottom: 5 }}>
@@ -1298,7 +1532,30 @@ export default function Home() {
             </div>
 
             <div className="inspector-section">
-              <span className="sidebar-group-label">DOT PRODUCT &amp; ANGLE</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span className="sidebar-group-label">DOT PRODUCT &amp; ANGLE</span>
+                <button
+                  type="button"
+                  title={visualVisibility.angle ? "Hide visualization" : "Show visualization"}
+                  aria-label={visualVisibility.angle ? "Hide DOT PRODUCT &amp; ANGLE visualization" : "Show DOT PRODUCT &amp; ANGLE visualization"}
+                  onClick={() => toggleVisualization("angle")}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 28,
+                    height: 26,
+                    flexShrink: 0,
+                    borderRadius: 6,
+                    border: "1px solid var(--border, #30303a)",
+                    background: visualVisibility.angle ? "rgba(34,197,94,0.10)" : "rgba(148,163,184,0.10)",
+                    color: visualVisibility.angle ? "#86EFAC" : "#94A3B8",
+                    cursor: "pointer"
+                  }}
+                >
+                  {visualVisibility.angle ? <Eye size={14} /> : <EyeOff size={14} />}
+                </button>
+              </div>
               {distancePointA && distancePointB ? (
                 <div style={{ marginTop: 8, padding: 11, borderRadius: 8, background: "rgba(168,85,247,0.07)", border: "1px solid rgba(168,85,247,0.22)", fontSize: 11, lineHeight: 1.75 }}>
                   <strong style={{ display: "block", color: "#C4B5FD", marginBottom: 5 }}>
@@ -1346,7 +1603,30 @@ export default function Home() {
             </div>
 
             <div className="inspector-section">
-              <span className="sidebar-group-label">DISTANCE BETWEEN POINTS</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span className="sidebar-group-label">DISTANCE BETWEEN POINTS</span>
+                <button
+                  type="button"
+                  title={visualVisibility.distance ? "Hide visualization" : "Show visualization"}
+                  aria-label={visualVisibility.distance ? "Hide DISTANCE BETWEEN POINTS visualization" : "Show DISTANCE BETWEEN POINTS visualization"}
+                  onClick={() => toggleVisualization("distance")}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 28,
+                    height: 26,
+                    flexShrink: 0,
+                    borderRadius: 6,
+                    border: "1px solid var(--border, #30303a)",
+                    background: visualVisibility.distance ? "rgba(34,197,94,0.10)" : "rgba(148,163,184,0.10)",
+                    color: visualVisibility.distance ? "#86EFAC" : "#94A3B8",
+                    cursor: "pointer"
+                  }}
+                >
+                  {visualVisibility.distance ? <Eye size={14} /> : <EyeOff size={14} />}
+                </button>
+              </div>
               <label className="property-row"><span>Point A</span><select value={distanceAId} disabled={points.length < 2} onChange={(e) => { const id=e.target.value; setDistancePointAId(id); if (id===distanceBId) setDistancePointBId(points.find((point)=>point.id!==id)?.id ?? ""); }}>{points.map((point)=><option key={point.id} value={point.id}>{point.name}</option>)}</select></label>
               <label className="property-row"><span>Point B</span><select value={distanceBId} disabled={points.length < 2} onChange={(e)=>setDistancePointBId(e.target.value)}>{points.filter((point)=>point.id!==distanceAId).map((point)=><option key={point.id} value={point.id}>{point.name}</option>)}</select></label>
               {distancePointA && distancePointB ? (
@@ -1363,7 +1643,30 @@ export default function Home() {
             </div>
 
             <div className="inspector-section">
-              <span className="sidebar-group-label">OCTANT DETECTOR</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span className="sidebar-group-label">OCTANT DETECTOR</span>
+                <button
+                  type="button"
+                  title={visualVisibility.octant ? "Hide visualization" : "Show visualization"}
+                  aria-label={visualVisibility.octant ? "Hide OCTANT DETECTOR visualization" : "Show OCTANT DETECTOR visualization"}
+                  onClick={() => toggleVisualization("octant")}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 28,
+                    height: 26,
+                    flexShrink: 0,
+                    borderRadius: 6,
+                    border: "1px solid var(--border, #30303a)",
+                    background: visualVisibility.octant ? "rgba(34,197,94,0.10)" : "rgba(148,163,184,0.10)",
+                    color: visualVisibility.octant ? "#86EFAC" : "#94A3B8",
+                    cursor: "pointer"
+                  }}
+                >
+                  {visualVisibility.octant ? <Eye size={14} /> : <EyeOff size={14} />}
+                </button>
+              </div>
 
               <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
                 <button
