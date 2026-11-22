@@ -1,0 +1,172 @@
+import { create } from "zustand";
+
+export type SceneGeometryKind =
+  | "circle"
+  | "ellipse"
+  | "parabola"
+  | "hyperbola"
+  | "sphere"
+  | "line"
+  | "plane";
+
+export interface GeometryParams {
+  center: [number, number, number];
+  a: number;
+  b: number;
+  rotation: number;
+  point: [number, number, number];
+  direction: [number, number, number];
+  plane: [number, number, number, number];
+  extent: number;
+}
+
+export interface SceneGeometryObject {
+  id: string;
+  name: string;
+  kind: SceneGeometryKind;
+  visible: boolean;
+  color: string;
+  params: GeometryParams;
+}
+
+const defaults: Record<
+  SceneGeometryKind,
+  { name: string; color: string; params: GeometryParams }
+> = {
+  circle: {
+    name: "Circle",
+    color: "#F472B6",
+    params: { center: [0, 0, 0], a: 2, b: 2, rotation: 0, point: [0, 0, 0], direction: [1, 1, 0], plane: [0, 0, 1, 0], extent: 5 },
+  },
+  ellipse: {
+    name: "Ellipse",
+    color: "#F472B6",
+    params: { center: [0, 0, 0], a: 3, b: 2, rotation: 0, point: [0, 0, 0], direction: [1, 1, 0], plane: [0, 0, 1, 0], extent: 5 },
+  },
+  parabola: {
+    name: "Parabola",
+    color: "#A78BFA",
+    params: { center: [0, 0, 0], a: 1, b: 1, rotation: 0, point: [0, 0, 0], direction: [1, 1, 0], plane: [0, 0, 1, 0], extent: 4 },
+  },
+  hyperbola: {
+    name: "Hyperbola",
+    color: "#38BDF8",
+    params: { center: [0, 0, 0], a: 1.5, b: 1, rotation: 0, point: [0, 0, 0], direction: [1, 1, 1], plane: [0, 0, 1, 0], extent: 2 },
+  },
+  sphere: {
+    name: "Sphere",
+    color: "#A78BFA",
+    params: { center: [0, 0, 0], a: 2, b: 2, rotation: 0, point: [0, 0, 0], direction: [1, 1, 1], plane: [0, 0, 1, 0], extent: 5 },
+  },
+  line: {
+    name: "Line",
+    color: "#FBBF24",
+    params: { center: [0, 0, 0], a: 1, b: 1, rotation: 0, point: [0, 0, 0], direction: [1, 1, 1], plane: [0, 0, 1, 0], extent: 8 },
+  },
+  plane: {
+    name: "Plane",
+    color: "#38BDF8",
+    params: { center: [0, 0, 0], a: 1, b: 1, rotation: 0, point: [0, 0, 0], direction: [1, 1, 1], plane: [1, 1, 1, -2], extent: 5 },
+  },
+};
+
+interface GeometryState {
+  objects: SceneGeometryObject[];
+  selectedId: string | null;
+  addObject: (kind: SceneGeometryKind) => void;
+  updateObject: (
+    id: string,
+    updates: Partial<Pick<SceneGeometryObject, "name" | "visible" | "color">> & {
+      params?: Partial<GeometryParams>;
+    }
+  ) => void;
+  deleteObject: (id: string) => void;
+  duplicateObject: (id: string) => void;
+  selectObject: (id: string | null) => void;
+  setAllVisibility: (visible: boolean) => void;
+}
+
+export const useGeometryStore = create<GeometryState>((set, get) => ({
+  objects: [],
+  selectedId: null,
+
+  addObject: (kind) => {
+    const current = get().objects;
+    const base = defaults[kind];
+    const count = current.filter((item) => item.kind === kind).length + 1;
+    const id = `${kind}-${Date.now()}-${count}`;
+
+    const object: SceneGeometryObject = {
+      id,
+      kind,
+      name: `${base.name} ${count}`,
+      visible: true,
+      color: base.color,
+      params: { ...base.params },
+    };
+
+    set({
+      objects: [...current, object],
+      selectedId: id,
+    });
+  },
+
+  updateObject: (id, updates) =>
+    set((state) => ({
+      objects: state.objects.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              ...updates,
+              params: updates.params
+                ? { ...item.params, ...updates.params }
+                : item.params,
+            }
+          : item
+      ),
+    })),
+
+  deleteObject: (id) =>
+    set((state) => {
+      const objects = state.objects.filter((item) => item.id !== id);
+
+      return {
+        objects,
+        selectedId:
+          state.selectedId === id ? objects[0]?.id ?? null : state.selectedId,
+      };
+    }),
+
+  duplicateObject: (id) => {
+    const original = get().objects.find((item) => item.id === id);
+    if (!original) return;
+
+    const count =
+      get().objects.filter((item) => item.kind === original.kind).length + 1;
+
+    const copy: SceneGeometryObject = {
+      ...original,
+      id: `${original.kind}-${Date.now()}-${count}`,
+      name: `${original.name} copy`,
+      params: {
+        ...original.params,
+        center: [...original.params.center],
+        point: [...original.params.point],
+        direction: [...original.params.direction],
+        plane: [...original.params.plane],
+      },
+    };
+
+    set((state) => ({
+      objects: [...state.objects, copy],
+      selectedId: copy.id,
+    }));
+  },
+
+  selectObject: (id) => set({ selectedId: id }),
+
+  setAllVisibility: (visible) =>
+    set((state) => ({
+      objects: state.objects.map((item) => ({ ...item, visible })),
+    })),
+}));
