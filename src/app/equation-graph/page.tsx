@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, Box, Sparkles } from "lucide-react";
 import EquationGraphWorkspace from "@/components/equation-graph/equation-graph-workspace";
+import EquationGraph3D from "@/components/equation-graph/equation-graph-3d";
 import styles from "./equation-graph.module.css";
 
 export const metadata = {
@@ -60,27 +61,7 @@ export default function EquationGraphPage() {
             <span className={styles.step}>02</span>
           </div>
 
-          <div className={styles.graphPlaceholder}>
-            <div className={styles.graphIcon}>
-              <Box size={34} />
-            </div>
-
-            <h3>3D Graph View</h3>
-
-            <p>
-              Write an equation on the canvas. After OCR recognition,
-              generate its interactive 3D surface here.
-            </p>
-
-            <div className={styles.exampleEquation}>
-              <span>Example equation</span>
-              <strong>z = x² + y²</strong>
-            </div>
-
-            <span className={styles.comingSoon}>
-              GRAPH ENGINE · COMING NEXT
-            </span>
-          </div>
+          <EquationGraph3D />
         </section>
       </div>
 

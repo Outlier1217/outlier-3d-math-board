@@ -4,6 +4,7 @@ import { useState } from "react";
 import { LoaderCircle, Sparkles, CheckCircle2 } from "lucide-react";
 import HandwritingCanvas from "./handwriting-canvas";
 import styles from "./equation-graph-workspace.module.css";
+import { useEquationGraphStore } from "@/lib/equation-graph/store";
 
 type OCRResponse = {
   success: boolean;
@@ -13,7 +14,8 @@ type OCRResponse = {
 
 export default function EquationGraphWorkspace() {
   const [canvasImage, setCanvasImage] = useState("");
-  const [equation, setEquation] = useState("");
+  const equation = useEquationGraphStore((state) => state.equation);
+  const setEquation = useEquationGraphStore((state) => state.setEquation);
   const [confidence, setConfidence] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");

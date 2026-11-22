@@ -308,3 +308,51 @@
     font-size: 8px;
   }
 }
+
+/* Independent scrolling for the handwriting workspace */
+
+.leftPanel {
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: #40516a transparent;
+}
+
+.leftPanel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.leftPanel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.leftPanel::-webkit-scrollbar-thumb {
+  background: #40516a;
+  border-radius: 10px;
+}
+
+.leftPanel::-webkit-scrollbar-thumb:hover {
+  background: #60a5fa;
+}
+
+.canvasArea {
+  flex: 0 0 auto;
+  min-height: 560px;
+}
+
+.canvasArea > * {
+  min-height: 0;
+}
+
+@media (max-width: 850px) {
+  .leftPanel {
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .canvasArea {
+    min-height: 560px;
+  }
+}
