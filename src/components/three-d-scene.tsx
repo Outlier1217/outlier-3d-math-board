@@ -515,7 +515,21 @@ function PlaneGraphic({ equation }: { equation: { a: number; b: number; c: numbe
   );
 }
 
-function Scene({ distancePointIds, vectorOperation, planeEquation, lineGeometry, sphere, conic, zoomScale, interactionMode }: { distancePointIds: [string, string] | null; vectorOperation: "add" | "subtract"; planeEquation?: { a: number; b: number; c: number; d: number } | null; lineGeometry?: { point: [number, number, number]; direction: [number, number, number] } | null; sphere?: { center: [number, number, number]; radius: number } | null; conic?: { angle: number; offset: number; visible: boolean }; zoomScale: number; interactionMode: "3d" | "pen" }) {
+function Scene({ distancePointIds, vectorOperation, planeEquation, lineGeometry, sphere, conic, zoomScale, interactionMode, visualVisibility }: {
+  distancePointIds: [string, string] | null;
+  vectorOperation: "add" | "subtract";
+  planeEquation?: { a: number; b: number; c: number; d: number } | null;
+  lineGeometry?: { point: [number, number, number]; direction: [number, number, number] } | null;
+  sphere?: { center: [number, number, number]; radius: number } | null;
+  conic?: { angle: number; offset: number; visible: boolean };
+  zoomScale: number;
+  interactionMode: "3d" | "pen";
+  visualVisibility: {
+    vectorOperations: boolean; angle: boolean; crossProduct: boolean;
+    projection: boolean; distance: boolean; conic: boolean;
+    sphere: boolean; line: boolean; plane: boolean; octant: boolean;
+  };
+}) {
   const points = useSceneStore((state) => state.points);
   const selectedOctant = useSceneStore((state) => state.selectedOctant);
 
@@ -550,7 +564,7 @@ function Scene({ distancePointIds, vectorOperation, planeEquation, lineGeometry,
         infiniteGrid
       />
 
-      {selectedOctant !== null && (
+      {visualVisibility.octant && selectedOctant !== null && (
         <OctantHighlight octant={selectedOctant} />
       )}
 
@@ -579,15 +593,15 @@ function Scene({ distancePointIds, vectorOperation, planeEquation, lineGeometry,
       {points.map((point) => (
         <PointMarker key={point.id} point={point} />
       ))}
-      <DistanceSegment points={points} pointIds={distancePointIds} />
-      <VectorOperationGraphic points={points} pointIds={distancePointIds} operation={vectorOperation} />
-      <AngleBetweenVectorsGraphic points={points} pointIds={distancePointIds} />
-      <CrossProductGraphic points={points} pointIds={distancePointIds} />
-      <ConicSectionsGraphic conic={conic ?? { angle: 20, offset: 0, visible: false }} />
-      <SphereGraphic sphere={sphere ?? null} />
-      <LineGeometryGraphic lineGeometry={lineGeometry ?? null} />
-      <PlaneGraphic equation={planeEquation ?? null} />
-      <ProjectionGraphic points={points} pointIds={distancePointIds} />
+      {visualVisibility.distance && <DistanceSegment points={points} pointIds={distancePointIds} />}
+      {visualVisibility.vectorOperations && <VectorOperationGraphic points={points} pointIds={distancePointIds} operation={vectorOperation} />}
+      {visualVisibility.angle && <AngleBetweenVectorsGraphic points={points} pointIds={distancePointIds} />}
+      {visualVisibility.crossProduct && <CrossProductGraphic points={points} pointIds={distancePointIds} />}
+      {visualVisibility.conic && <ConicSectionsGraphic conic={conic ?? { angle: 20, offset: 0, visible: false }} />}
+      {visualVisibility.sphere && <SphereGraphic sphere={sphere ?? null} />}
+      {visualVisibility.line && <LineGeometryGraphic lineGeometry={lineGeometry ?? null} />}
+      {visualVisibility.plane && <PlaneGraphic equation={planeEquation ?? null} />}
+      {visualVisibility.projection && <ProjectionGraphic points={points} pointIds={distancePointIds} />}
       <GeometryObjectsLayer />
 
       <OrbitControls
@@ -603,7 +617,13 @@ function Scene({ distancePointIds, vectorOperation, planeEquation, lineGeometry,
   );
 }
 
-export default function ThreeDScene({ distancePointIds = null, vectorOperation = "add", planeEquation = null, lineGeometry = null, sphere = null, conic = null, zoomScale = 1, interactionMode = "3d" }: { distancePointIds?: [string,string] | null; vectorOperation?: "add" | "subtract"; planeEquation?: { a: number; b: number; c: number; d: number } | null; lineGeometry?: { point: [number, number, number]; direction: [number, number, number] } | null; sphere?: { center: [number, number, number]; radius: number } | null; conic?: { angle: number; offset: number; visible: boolean } | null; zoomScale?: number; interactionMode?: "3d" | "pen" }) {
+export default function ThreeDScene({ distancePointIds = null, vectorOperation = "add", planeEquation = null, lineGeometry = null, sphere = null, conic = null, zoomScale = 1, interactionMode = "3d", visualVisibility }: { distancePointIds?: [string,string] | null; vectorOperation?: "add" | "subtract"; planeEquation?: { a: number; b: number; c: number; d: number } | null; lineGeometry?: { point: [number, number, number]; direction: [number, number, number] } | null; sphere?: { center: [number, number, number]; radius: number } | null; conic?: { angle: number; offset: number; visible: boolean } | null; zoomScale?: number; interactionMode?: "3d" | "pen";
+  visualVisibility: {
+    vectorOperations: boolean; angle: boolean; crossProduct: boolean;
+    projection: boolean; distance: boolean; conic: boolean;
+    sphere: boolean; line: boolean; plane: boolean; octant: boolean;
+  };
+}) {
   return (
     <Canvas
       className="three-d-canvas"
@@ -618,7 +638,7 @@ export default function ThreeDScene({ distancePointIds = null, vectorOperation =
       dpr={[1, 2]}
     >
       <Suspense fallback={null}>
-        <Scene distancePointIds={distancePointIds} vectorOperation={vectorOperation} planeEquation={planeEquation} lineGeometry={lineGeometry} sphere={sphere} conic={conic ?? undefined} zoomScale={zoomScale} interactionMode={interactionMode} />
+        <Scene distancePointIds={distancePointIds} vectorOperation={vectorOperation} planeEquation={planeEquation} lineGeometry={lineGeometry} sphere={sphere} conic={conic ?? undefined} zoomScale={zoomScale} interactionMode={interactionMode} visualVisibility={visualVisibility} />
       </Suspense>
     </Canvas>
   );
