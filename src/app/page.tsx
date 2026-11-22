@@ -540,6 +540,13 @@ export default function Home() {
                 <small>Multivariable integration</small>
               </span>
             </Link>
+            <Link href="/equation-graph" className="module-menu-link">
+              <Crosshair size={16} />
+              <span>
+                <strong>Equation Graph Studio</strong>
+                <small>Handwritten equations to interactive 3D graphs</small>
+              </span>
+            </Link>
           </div>
         </details>
 
