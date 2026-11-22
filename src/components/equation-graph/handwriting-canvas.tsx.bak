@@ -1,0 +1,337 @@
+"use client";
+
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import {
+  Eraser,
+  Pen,
+  RotateCcw,
+  RotateCw,
+  Trash2,
+} from "lucide-react";
+import styles from "./handwriting-canvas.module.css";
+
+type DrawingTool = "pen" | "eraser";
+
+type Props = {
+  onCanvasChange?: (image: string) => void;
+};
+
+export default function HandwritingCanvas({
+  onCanvasChange,
+}: Props) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const drawingRef = useRef(false);
+  const lastPointRef = useRef({ x: 0, y: 0 });
+  const historyRef = useRef<string[]>([]);
+  const historyIndexRef = useRef(-1);
+
+  const [tool, setTool] = useState<DrawingTool>("pen");
+  const [lineWidth, setLineWidth] = useState(3);
+  const [historyVersion, setHistoryVersion] = useState(0);
+
+  const saveHistory = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const image = canvas.toDataURL("image/png");
+    const history = historyRef.current.slice(
+      0,
+      historyIndexRef.current + 1,
+    );
+
+    history.push(image);
+    historyRef.current = history.slice(-30);
+    historyIndexRef.current = historyRef.current.length - 1;
+
+    setHistoryVersion((value) => value + 1);
+    onCanvasChange?.(image);
+  }, [onCanvasChange]);
+
+  const restoreImage = useCallback((image: string) => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+
+    if (!canvas || !context) return;
+
+    const picture = new Image();
+
+    picture.onload = () => {
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(picture, 0, 0);
+      onCanvasChange?.(canvas.toDataURL("image/png"));
+    };
+
+    picture.src = image;
+  }, [onCanvasChange]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+
+    if (!canvas || !container) return;
+
+    const resizeCanvas = () => {
+      const rect = container.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+
+      const previous = canvas.toDataURL("image/png");
+      const image = new Image();
+
+      image.onload = () => {
+        const ratio = window.devicePixelRatio || 1;
+
+        canvas.width = Math.round(rect.width * ratio);
+        canvas.height = Math.round(rect.height * ratio);
+
+        const context = canvas.getContext("2d");
+        if (!context) return;
+
+        context.setTransform(ratio, 0, 0, ratio, 0, 0);
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, rect.width, rect.height);
+
+        if (historyIndexRef.current >= 0) {
+          context.drawImage(image, 0, 0, rect.width, rect.height);
+        }
+
+        if (historyIndexRef.current === -1) {
+          saveHistory();
+        }
+      };
+
+      image.src = previous;
+    };
+
+    const observer = new ResizeObserver(resizeCanvas);
+    observer.observe(container);
+
+    resizeCanvas();
+
+    return () => observer.disconnect();
+  }, [saveHistory]);
+
+  const getPoint = (
+    event: React.PointerEvent<HTMLCanvasElement>,
+  ) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+      pressure: event.pressure,
+    };
+  };
+
+  const startDrawing = (
+    event: React.PointerEvent<HTMLCanvasElement>,
+  ) => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+
+    if (!canvas || !context) return;
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    const point = getPoint(event);
+
+    drawingRef.current = true;
+    lastPointRef.current = point;
+
+    context.beginPath();
+    context.moveTo(point.x, point.y);
+
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.strokeStyle = tool === "eraser" ? "#ffffff" : "#111827";
+    context.lineWidth =
+      tool === "eraser"
+        ? lineWidth * 5
+        : lineWidth * (event.pointerType === "pen" && point.pressure > 0
+            ? Math.max(0.35, point.pressure * 1.5)
+            : 1);
+
+    context.lineTo(point.x + 0.01, point.y + 0.01);
+    context.stroke();
+  };
+
+  const draw = (
+    event: React.PointerEvent<HTMLCanvasElement>,
+  ) => {
+    if (!drawingRef.current) return;
+
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+
+    if (!canvas || !context) return;
+
+    event.preventDefault();
+
+    const point = getPoint(event);
+    const previous = lastPointRef.current;
+
+    context.beginPath();
+    context.moveTo(previous.x, previous.y);
+    context.lineTo(point.x, point.y);
+
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.strokeStyle = tool === "eraser" ? "#ffffff" : "#111827";
+    context.lineWidth =
+      tool === "eraser"
+        ? lineWidth * 5
+        : lineWidth * (event.pointerType === "pen" && point.pressure > 0
+            ? Math.max(0.35, point.pressure * 1.5)
+            : 1);
+
+    context.stroke();
+    lastPointRef.current = point;
+  };
+
+  const stopDrawing = () => {
+    if (!drawingRef.current) return;
+
+    drawingRef.current = false;
+    saveHistory();
+  };
+
+  const undo = () => {
+    if (historyIndexRef.current <= 0) return;
+
+    historyIndexRef.current -= 1;
+    restoreImage(historyRef.current[historyIndexRef.current]);
+    setHistoryVersion((value) => value + 1);
+  };
+
+  const redo = () => {
+    if (historyIndexRef.current >= historyRef.current.length - 1) return;
+
+    historyIndexRef.current += 1;
+    restoreImage(historyRef.current[historyIndexRef.current]);
+    setHistoryVersion((value) => value + 1);
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+
+    if (!canvas || !context) return;
+
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    saveHistory();
+  };
+
+  const canUndo = historyIndexRef.current > 0;
+  const canRedo =
+    historyIndexRef.current < historyRef.current.length - 1;
+
+  return (
+    <section className={styles.panel}>
+      <div className={styles.toolbar}>
+        <div className={styles.toolGroup}>
+          <button
+            type="button"
+            className={tool === "pen" ? styles.activeTool : styles.tool}
+            onClick={() => setTool("pen")}
+            title="Pen"
+            aria-label="Pen"
+          >
+            <Pen size={17} />
+          </button>
+
+          <button
+            type="button"
+            className={tool === "eraser" ? styles.activeTool : styles.tool}
+            onClick={() => setTool("eraser")}
+            title="Eraser"
+            aria-label="Eraser"
+          >
+            <Eraser size={17} />
+          </button>
+        </div>
+
+        <div className={styles.separator} />
+
+        <label className={styles.thicknessControl}>
+          <span>Size</span>
+          <input
+            type="range"
+            min="1"
+            max="12"
+            value={lineWidth}
+            onChange={(event) => setLineWidth(Number(event.target.value))}
+          />
+          <span className={styles.sizeValue}>{lineWidth}px</span>
+        </label>
+
+        <div className={styles.separator} />
+
+        <div className={styles.toolGroup}>
+          <button
+            type="button"
+            className={styles.tool}
+            onClick={undo}
+            disabled={!canUndo}
+            title="Undo"
+            aria-label="Undo"
+          >
+            <RotateCcw size={17} />
+          </button>
+
+          <button
+            type="button"
+            className={styles.tool}
+            onClick={redo}
+            disabled={!canRedo}
+            title="Redo"
+            aria-label="Redo"
+          >
+            <RotateCw size={17} />
+          </button>
+
+          <button
+            type="button"
+            className={styles.clearTool}
+            onClick={clearCanvas}
+            title="Clear canvas"
+            aria-label="Clear canvas"
+          >
+            <Trash2 size={17} />
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.canvasContainer} ref={containerRef}>
+        <canvas
+          ref={canvasRef}
+          className={styles.canvas}
+          onPointerDown={startDrawing}
+          onPointerMove={draw}
+          onPointerUp={stopDrawing}
+          onPointerCancel={stopDrawing}
+          onLostPointerCapture={stopDrawing}
+          aria-label="Mathematical handwriting canvas"
+        />
+
+        <div className={styles.canvasHint}>
+          Write your equation here
+        </div>
+      </div>
+
+      <div className={styles.footer}>
+        <span>Handwriting workspace</span>
+        <span>Undo history: {historyVersion > 0 ? "Active" : "Ready"}</span>
+      </div>
+    </section>
+  );
+}
